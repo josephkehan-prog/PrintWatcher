@@ -329,16 +329,16 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
 # UI
 # ---------------------------------------------------------------------------
 
-# Palette: https://coolors.co/f5fbef-2e294e-129490-9a879d-7a3b69
-COLOR_BG = "#2e294e"          # base — dark indigo
-COLOR_PANEL = "#3a345e"       # base lifted ~5% lightness for cards
-COLOR_LOG_BG = "#1f1c36"      # base deepened for log surface
-COLOR_TEXT = "#f5fbef"        # off-white
-COLOR_MUTED = "#9a879d"       # muted mauve
-COLOR_OK = "#129490"          # teal — active / success
-COLOR_ERR = "#7a3b69"         # wine — paused / errors
-COLOR_LOG_TEXT = "#d4cdd6"    # softened off-white with palette undertone
-COLOR_BTN_HOVER = "#4a4470"   # base lifted further for button hover
+# Palette: https://coolors.co/2a1e5c-0a0f0d-d9bdc5-548c2f-78c3fb
+COLOR_BG = "#2a1e5c"          # base — deep purple
+COLOR_PANEL = "#372967"       # base lifted for cards
+COLOR_LOG_BG = "#0a0f0d"      # near-black log surface
+COLOR_TEXT = "#d9bdc5"        # pale blush
+COLOR_MUTED = "#9a8388"       # blush desaturated for secondary labels
+COLOR_OK = "#548c2f"          # green — active / running
+COLOR_ERR = "#78c3fb"         # sky blue — paused / idle
+COLOR_LOG_TEXT = "#d9bdc5"    # match TEXT, palette has no separate body tone
+COLOR_BTN_HOVER = "#443378"   # base lifted further for button hover
 
 
 class App(tk.Tk):
