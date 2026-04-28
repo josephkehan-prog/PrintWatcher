@@ -28,6 +28,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
@@ -45,7 +46,68 @@ PRINTED_SUBDIR = "_printed"
 
 DEFAULT_SUMATRA = Path(r"C:\Tools\SumatraPDF\SumatraPDF.exe")
 
+DEFAULT_PRINTER_LABEL = "Windows default printer"
+SIDES_CHOICES = (
+    ("Printer default", None),
+    ("Single-sided (simplex)", "simplex"),
+    ("Duplex (long edge)", "duplex"),
+    ("Duplex (short edge)", "duplexshort"),
+)
+COLOR_CHOICES = (
+    ("Printer default", None),
+    ("Color", "color"),
+    ("Monochrome", "monochrome"),
+)
+
 log = logging.getLogger("printwatcher.ui")
+
+
+@dataclass(frozen=True)
+class PrintOptions:
+    """Per-job print settings applied to every file the watcher prints next."""
+
+    printer: str | None = None  # None = Windows default
+    copies: int = 1
+    sides: str | None = None    # None | "simplex" | "duplex" | "duplexshort"
+    color: str | None = None    # None | "color" | "monochrome"
+
+    def to_sumatra_args(self, sumatra: Path, target: Path) -> list[str]:
+        cmd: list[str] = [str(sumatra)]
+        if self.printer:
+            cmd += ["-print-to", self.printer]
+        else:
+            cmd += ["-print-to-default"]
+
+        settings: list[str] = []
+        if self.copies > 1:
+            settings.append(f"{self.copies}x")
+        if self.sides:
+            settings.append(self.sides)
+        if self.color:
+            settings.append(self.color)
+        if settings:
+            cmd += ["-print-settings", ",".join(settings)]
+
+        cmd += ["-silent", "-exit-on-print", str(target)]
+        return cmd
+
+
+def list_printers() -> list[str]:
+    """Return Windows printer names via PowerShell. Empty list on failure."""
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "(Get-Printer).Name"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        log.warning("could not enumerate printers: %s", exc)
+        return []
+    if result.returncode != 0:
+        log.warning("Get-Printer exit=%s stderr=%s", result.returncode, result.stderr.strip())
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -135,12 +197,14 @@ class PrinterWorker(threading.Thread):
         printed_dir: Path,
         log_cb: Callable[[str], None],
         stat_cb: Callable[[str, int], None],
+        options_provider: Callable[[], PrintOptions],
     ) -> None:
         super().__init__(daemon=True, name="PrinterWorker")
         self._sumatra = sumatra
         self._printed_dir = printed_dir
         self._log = log_cb
         self._stat = stat_cb
+        self._options_provider = options_provider
         self._queue: queue.Queue[Path] = queue.Queue()
         self._inflight: set[Path] = set()
         self._lock = threading.Lock()
@@ -179,16 +243,20 @@ class PrinterWorker(threading.Thread):
             self._stat("errors", 1)
             return
 
-        self._log(f"printing: {path.name}")
+        options = self._options_provider()
+        printer_label = options.printer or DEFAULT_PRINTER_LABEL
+        details = [f"to {printer_label}"]
+        if options.copies > 1:
+            details.append(f"{options.copies} copies")
+        if options.sides:
+            details.append(options.sides)
+        if options.color:
+            details.append(options.color)
+        self._log(f"printing: {path.name} ({', '.join(details)})")
+
         try:
             result = subprocess.run(
-                [
-                    str(self._sumatra),
-                    "-print-to-default",
-                    "-silent",
-                    "-exit-on-print",
-                    str(path),
-                ],
+                options.to_sumatra_args(self._sumatra, path),
                 check=False,
             )
         except FileNotFoundError:
@@ -282,10 +350,11 @@ class App(tk.Tk):
         self._stats = {"printed": 0, "pending": 0, "errors": 0}
         self._stop = threading.Event()
         self._observer: Observer | None = None
+        self._options = PrintOptions()
 
         self.title("PrintWatcher")
-        self.geometry("760x480")
-        self.minsize(600, 380)
+        self.geometry("820x620")
+        self.minsize(660, 520)
         self.configure(bg=COLOR_BG)
 
         self._build_ui()
@@ -295,6 +364,7 @@ class App(tk.Tk):
             printed_dir=self._printed_dir,
             log_cb=self._log_threadsafe,
             stat_cb=self._stat_threadsafe,
+            options_provider=lambda: self._options,
         )
         self._worker.start()
         self._start_observer()
@@ -379,6 +449,8 @@ class App(tk.Tk):
             value.pack(anchor="w")
             self._stat_labels[key] = value
 
+        self._build_options_panel()
+
         log_wrap = tk.Frame(self, bg=COLOR_BG, padx=18, pady=8)
         log_wrap.pack(fill="both", expand=True)
         self._log_text = tk.Text(
@@ -428,6 +500,119 @@ class App(tk.Tk):
     def _set_dot(self, color: str) -> None:
         self._dot.delete("all")
         self._dot.create_oval(2, 2, 13, 13, fill=color, outline="")
+
+    # ---- print options panel -----------------------------------------
+
+    def _build_options_panel(self) -> None:
+        wrap = tk.Frame(self, bg=COLOR_BG, padx=18, pady=4)
+        wrap.pack(fill="x")
+
+        panel = tk.Frame(wrap, bg=COLOR_PANEL, padx=14, pady=12)
+        panel.pack(fill="x")
+        tk.Label(
+            panel, text="Print options", fg=COLOR_TEXT, bg=COLOR_PANEL,
+            font=("Segoe UI", 10, "bold"),
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+
+        # Row 1: printer dropdown + refresh + copies
+        tk.Label(panel, text="Printer", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", padx=(0, 8))
+        self._printer_var = tk.StringVar(value=DEFAULT_PRINTER_LABEL)
+        self._printer_combo = ttk.Combobox(
+            panel, textvariable=self._printer_var, state="readonly", width=42,
+        )
+        self._printer_combo.grid(row=1, column=1, sticky="ew", padx=(0, 6))
+        self._printer_combo.bind("<<ComboboxSelected>>", self._on_printer_change)
+
+        ttk.Button(
+            panel, text="Refresh", style="Action.TButton",
+            command=self._refresh_printers,
+        ).grid(row=1, column=2, padx=(0, 16))
+
+        tk.Label(panel, text="Copies", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 9)).grid(row=1, column=3, sticky="e", padx=(0, 6))
+        self._copies_var = tk.IntVar(value=1)
+        copies_spin = ttk.Spinbox(
+            panel, from_=1, to=99, textvariable=self._copies_var, width=5,
+            command=self._on_copies_change,
+        )
+        copies_spin.grid(row=1, column=4, sticky="w")
+        copies_spin.bind("<FocusOut>", lambda _e: self._on_copies_change())
+        copies_spin.bind("<Return>", lambda _e: self._on_copies_change())
+
+        panel.grid_columnconfigure(1, weight=1)
+
+        # Row 2: sides + color
+        tk.Label(panel, text="Sides", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        self._sides_var = tk.StringVar(value=SIDES_CHOICES[0][0])
+        sides_combo = ttk.Combobox(
+            panel, textvariable=self._sides_var, state="readonly",
+            values=[label for label, _ in SIDES_CHOICES],
+        )
+        sides_combo.grid(row=2, column=1, sticky="ew", padx=(0, 16), pady=(10, 0))
+        sides_combo.bind("<<ComboboxSelected>>", self._on_sides_change)
+
+        tk.Label(panel, text="Color", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 9)).grid(row=2, column=3, sticky="e", padx=(0, 6), pady=(10, 0))
+        self._color_var = tk.StringVar(value=COLOR_CHOICES[0][0])
+        color_combo = ttk.Combobox(
+            panel, textvariable=self._color_var, state="readonly", width=14,
+            values=[label for label, _ in COLOR_CHOICES],
+        )
+        color_combo.grid(row=2, column=4, sticky="w", pady=(10, 0))
+        color_combo.bind("<<ComboboxSelected>>", self._on_color_change)
+
+        # Row 3: stapling note
+        tk.Label(
+            panel,
+            text=(
+                "Stapling / hole-punch: SumatraPDF can't toggle finishing options. "
+                "Set them in the printer's driver defaults (Settings -> Printers -> "
+                "Printing preferences -> Finishing) or at the device's release dialog."
+            ),
+            fg=COLOR_MUTED, bg=COLOR_PANEL, font=("Segoe UI", 8),
+            wraplength=720, justify="left",
+        ).grid(row=3, column=0, columnspan=5, sticky="w", pady=(10, 0))
+
+        self._refresh_printers()
+
+    def _refresh_printers(self) -> None:
+        names = list_printers()
+        values = [DEFAULT_PRINTER_LABEL] + names
+        self._printer_combo.configure(values=values)
+        if self._printer_var.get() not in values:
+            self._printer_var.set(DEFAULT_PRINTER_LABEL)
+            self._options = replace(self._options, printer=None)
+        self._log_threadsafe(f"printer list refreshed ({len(names)} found)")
+
+    def _on_printer_change(self, _event: object = None) -> None:
+        choice = self._printer_var.get()
+        printer = None if choice == DEFAULT_PRINTER_LABEL else choice
+        self._options = replace(self._options, printer=printer)
+        self._log_threadsafe(f"printer set: {choice}")
+
+    def _on_copies_change(self) -> None:
+        try:
+            value = int(self._copies_var.get())
+        except (tk.TclError, ValueError):
+            value = 1
+        value = max(1, min(99, value))
+        self._copies_var.set(value)
+        self._options = replace(self._options, copies=value)
+        self._log_threadsafe(f"copies set: {value}")
+
+    def _on_sides_change(self, _event: object = None) -> None:
+        label = self._sides_var.get()
+        value = next((v for lab, v in SIDES_CHOICES if lab == label), None)
+        self._options = replace(self._options, sides=value)
+        self._log_threadsafe(f"sides set: {label}")
+
+    def _on_color_change(self, _event: object = None) -> None:
+        label = self._color_var.get()
+        value = next((v for lab, v in COLOR_CHOICES if lab == label), None)
+        self._options = replace(self._options, color=value)
+        self._log_threadsafe(f"color set: {label}")
 
     # ---- watcher lifecycle -------------------------------------------
 

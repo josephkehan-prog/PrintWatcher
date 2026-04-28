@@ -84,9 +84,19 @@ What it does differently from the tray version:
 
 - **Live event log** — every queued/printing/done/error line, timestamped, scrollable
 - **Stats** — printed, in queue, errors
+- **Print options panel** — pick a target printer, set copies, choose duplex (long/short edge) and color, all applied to the next file the watcher prints
 - **Manual rescan button** — re-checks the inbox immediately
 - **`on_moved` handler** — catches files OneDrive delivers via temp-file rename (which `on_created` misses)
 - **5-second polling fallback** — picks up anything the OS event stream drops
+
+### Stapling, hole-punching, and other finishing options
+
+SumatraPDF's `-print-settings` doesn't expose finishing — there's no toggle for "staple top-left" or "two-hole punch". Two options that do work:
+
+1. **Set them as the printer's default** in the driver: `Settings -> Printers & scanners -> <printer> -> Printing preferences -> Finishing` tab. Every job sent to that queue is then stapled.
+2. **Create a second Windows printer** pointed at the same physical device with stapling baked in (e.g. `Printix - Office (Stapled)`). Pick that one from the UI's printer dropdown when you want stapled jobs; switch back for unstapled.
+
+For Printix specifically, your IT can also expose "stapled" / "hole-punched" as separate Printix queues — those then show up as separate Windows printers, perfect for the dropdown.
 
 To auto-start without admin rights (e.g. locked-down work machines where Task Scheduler can't launch MS Store Python), drop a shortcut into `shell:startup`:
 
