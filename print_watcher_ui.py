@@ -329,16 +329,16 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
 # UI
 # ---------------------------------------------------------------------------
 
-# Palette: https://coolors.co/0a210f-14591d-99aa38-e1e289-acd2ed
-COLOR_BG = "#0a210f"          # deep forest — base surface
-COLOR_PANEL = "#14591d"       # forest green — cards
-COLOR_LOG_BG = "#04140a"      # base deepened for log surface
-COLOR_TEXT = "#e1e289"        # pale yellow
-COLOR_MUTED = "#b8b370"       # yellow desaturated for secondary labels
-COLOR_OK = "#99aa38"          # olive — active / running
-COLOR_ERR = "#acd2ed"         # sky blue — paused / idle
-COLOR_LOG_TEXT = "#e1e289"    # match TEXT for log lines
-COLOR_BTN_HOVER = "#1d7028"   # PANEL lifted for button hover
+# Palette: https://coolors.co/00a6fb-0582ca-006494
+COLOR_BG = "#006494"          # deep teal-blue — base
+COLOR_PANEL = "#0582ca"       # medium blue — cards lifted from base
+COLOR_LOG_BG = "#003e5c"      # base deepened for log surface
+COLOR_TEXT = "#e0f2ff"        # derived near-white with sky tint
+COLOR_MUTED = "#a3c4d9"       # TEXT desaturated for secondary labels
+COLOR_OK = "#00a6fb"          # brightest sky blue — active / running
+COLOR_ERR = "#6b8a9c"         # derived slate — paused / idle (palette has no warm accent)
+COLOR_LOG_TEXT = "#e0f2ff"    # match TEXT
+COLOR_BTN_HOVER = "#0a96e0"   # between PANEL and OK for button hover
 
 
 class App(tk.Tk):
