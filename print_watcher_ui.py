@@ -159,7 +159,7 @@ class PrinterWorker(threading.Thread):
         while True:
             path = self._queue.get()
             try:
-                self._handle(path)
+                self._print_one(path)
             except Exception:  # pragma: no cover - last-resort guard
                 log.exception("Unhandled error printing %s", path)
                 self._stat("errors", 1)
@@ -168,7 +168,7 @@ class PrinterWorker(threading.Thread):
                 with self._lock:
                     self._inflight.discard(path)
 
-    def _handle(self, path: Path) -> None:
+    def _print_one(self, path: Path) -> None:
         if self.paused.is_set():
             self._log(f"paused, skipping: {path.name}")
             return
