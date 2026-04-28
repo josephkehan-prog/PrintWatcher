@@ -329,13 +329,16 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
 # UI
 # ---------------------------------------------------------------------------
 
-COLOR_BG = "#0f172a"
-COLOR_PANEL = "#1e293b"
-COLOR_LOG_BG = "#020617"
-COLOR_TEXT = "#e2e8f0"
-COLOR_MUTED = "#94a3b8"
-COLOR_OK = "#22c55e"
-COLOR_ERR = "#ef4444"
+# Palette: https://coolors.co/f5fbef-2e294e-129490-9a879d-7a3b69
+COLOR_BG = "#2e294e"          # base — dark indigo
+COLOR_PANEL = "#3a345e"       # base lifted ~5% lightness for cards
+COLOR_LOG_BG = "#1f1c36"      # base deepened for log surface
+COLOR_TEXT = "#f5fbef"        # off-white
+COLOR_MUTED = "#9a879d"       # muted mauve
+COLOR_OK = "#129490"          # teal — active / success
+COLOR_ERR = "#7a3b69"         # wine — paused / errors
+COLOR_LOG_TEXT = "#d4cdd6"    # softened off-white with palette undertone
+COLOR_BTN_HOVER = "#4a4470"   # base lifted further for button hover
 
 
 class App(tk.Tk):
@@ -397,7 +400,7 @@ class App(tk.Tk):
         )
         style.map(
             "Action.TButton",
-            background=[("active", "#334155")],
+            background=[("active", COLOR_BTN_HOVER)],
             foreground=[("active", COLOR_TEXT)],
         )
 
@@ -456,8 +459,8 @@ class App(tk.Tk):
         self._log_text = tk.Text(
             log_wrap,
             bg=COLOR_LOG_BG,
-            fg="#cbd5e1",
-            insertbackground="#cbd5e1",
+            fg=COLOR_LOG_TEXT,
+            insertbackground=COLOR_LOG_TEXT,
             font=("Consolas", 10),
             wrap="none",
             relief="flat",
