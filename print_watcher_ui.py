@@ -353,7 +353,7 @@ class App(tk.Tk):
         self._stats = {"printed": 0, "pending": 0, "errors": 0}
         self._stop = threading.Event()
         self._observer: Observer | None = None
-        self._options = PrintOptions()
+        self._print_options = PrintOptions()
 
         self.title("PrintWatcher")
         self.geometry("820x620")
@@ -367,7 +367,7 @@ class App(tk.Tk):
             printed_dir=self._printed_dir,
             log_cb=self._log_threadsafe,
             stat_cb=self._stat_threadsafe,
-            options_provider=lambda: self._options,
+            options_provider=lambda: self._print_options,
         )
         self._worker.start()
         self._start_observer()
@@ -586,13 +586,13 @@ class App(tk.Tk):
         self._printer_combo.configure(values=values)
         if self._printer_var.get() not in values:
             self._printer_var.set(DEFAULT_PRINTER_LABEL)
-            self._options = replace(self._options, printer=None)
+            self._print_options = replace(self._print_options, printer=None)
         self._log_threadsafe(f"printer list refreshed ({len(names)} found)")
 
     def _on_printer_change(self, _event: object = None) -> None:
         choice = self._printer_var.get()
         printer = None if choice == DEFAULT_PRINTER_LABEL else choice
-        self._options = replace(self._options, printer=printer)
+        self._print_options = replace(self._print_options, printer=printer)
         self._log_threadsafe(f"printer set: {choice}")
 
     def _on_copies_change(self) -> None:
@@ -602,19 +602,19 @@ class App(tk.Tk):
             value = 1
         value = max(1, min(99, value))
         self._copies_var.set(value)
-        self._options = replace(self._options, copies=value)
+        self._print_options = replace(self._print_options, copies=value)
         self._log_threadsafe(f"copies set: {value}")
 
     def _on_sides_change(self, _event: object = None) -> None:
         label = self._sides_var.get()
         value = next((v for lab, v in SIDES_CHOICES if lab == label), None)
-        self._options = replace(self._options, sides=value)
+        self._print_options = replace(self._print_options, sides=value)
         self._log_threadsafe(f"sides set: {label}")
 
     def _on_color_change(self, _event: object = None) -> None:
         label = self._color_var.get()
         value = next((v for lab, v in COLOR_CHOICES if lab == label), None)
-        self._options = replace(self._options, color=value)
+        self._print_options = replace(self._print_options, color=value)
         self._log_threadsafe(f"color set: {label}")
 
     # ---- watcher lifecycle -------------------------------------------
