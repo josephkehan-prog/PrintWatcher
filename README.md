@@ -85,11 +85,24 @@ What it does differently from the tray version:
 - **Live event log** — every queued/printing/done/error line, timestamped, scrollable
 - **Stats** — printed, in queue, errors
 - **Print options panel** — pick a target printer, set copies, choose duplex (long/short edge) and color, all applied to the next file the watcher prints
-- **Persistent print history** — every job (success or failure) is recorded in a sortable table with time, file, status, printer, and the options that were applied. Stored in `%APPDATA%\PrintWatcher\history.json` and survives restarts (last 200 entries).
+- **Persistent print history** — every job (success or failure) is recorded in a sortable table with time, submitter, file, status, printer, and the options that were applied. Stored in `%APPDATA%\PrintWatcher\history.json` and survives restarts (last 200 entries).
+- **Multi-user submitter tracking** — files dropped into the inbox root attribute to the current Windows user. Files dropped into a subfolder (`PrintInbox\MaryDoe\report.pdf`) attribute to that subfolder name. The History tab shows the submitter column, and printed files move into matching `_printed\<submitter>\` subfolders. Useful when several staff share a OneDrive inbox.
 - **Tabbed Activity / History view** — switch between the live log and the historical table without leaving the window
 - **Manual rescan button** — re-checks the inbox immediately
 - **`on_moved` handler** — catches files OneDrive delivers via temp-file rename (which `on_created` misses)
-- **5-second polling fallback** — picks up anything the OS event stream drops
+- **5-second polling fallback** — picks up anything the OS event stream drops, walking subfolders too
+
+## Diagnostics: `scripts/verify_environment.py`
+
+When something's not working, the fastest path to a fix is:
+
+```powershell
+python scripts\verify_environment.py
+```
+
+Outputs PASS / WARN / FAIL for: Python version, MS Store Python alias detection, required packages (watchdog/pystray/pillow), SumatraPDF binary, OneDrive env vars, PrintInbox folder, default printer, Printix client process, and whether `bootstrap.ps1` has patched `print_watcher_tray.py`. Each non-PASS row includes a one-line `fix:` hint.
+
+`--json` emits machine-readable output if you want to wire it into a setup pipeline.
 
 ### Stapling, hole-punching, and other finishing options
 

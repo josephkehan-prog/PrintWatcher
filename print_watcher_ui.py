@@ -105,6 +105,7 @@ class PrintRecord:
     copies: int = 1
     sides: str = ""         # display label
     color: str = ""         # display label
+    submitter: str = ""     # subfolder name, or current Windows user for root drops
 
     @property
     def time_short(self) -> str:
@@ -176,6 +177,25 @@ def default_history_path() -> Path:
     if base:
         return Path(base) / "PrintWatcher" / "history.json"
     return Path.home() / ".printwatcher" / "history.json"
+
+
+def _local_user() -> str:
+    return (
+        os.environ.get("USERNAME")
+        or os.environ.get("USER")
+        or "local"
+    )
+
+
+def _submitter_for(path: Path, watch_dir: Path) -> str:
+    """Multi-user attribution: subfolder name when present, else current OS user."""
+    try:
+        relative = path.relative_to(watch_dir)
+    except ValueError:
+        return _local_user()
+    if len(relative.parts) <= 1:
+        return _local_user()
+    return relative.parts[0]
 
 
 def _sides_label(value: str | None) -> str:
@@ -292,6 +312,7 @@ class PrinterWorker(threading.Thread):
     def __init__(
         self,
         sumatra: Path,
+        watch_dir: Path,
         printed_dir: Path,
         log_cb: Callable[[str], None],
         stat_cb: Callable[[str, int], None],
@@ -300,6 +321,7 @@ class PrinterWorker(threading.Thread):
     ) -> None:
         super().__init__(daemon=True, name="PrinterWorker")
         self._sumatra = sumatra
+        self._watch_dir = watch_dir
         self._printed_dir = printed_dir
         self._log = log_cb
         self._stat = stat_cb
@@ -378,17 +400,27 @@ class PrinterWorker(threading.Thread):
             return
 
         try:
-            target = _unique_target(self._printed_dir, path.name)
+            submitter = _submitter_for(path, self._watch_dir)
+            dest_dir = self._printed_dir / submitter if submitter != _local_user() or path.parent != self._watch_dir else self._printed_dir
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            target = _unique_target(dest_dir, path.name)
             path.rename(target)
             self._log(f"done: {path.name}")
             self._stat("printed", 1)
-            self._record(path, "ok", "", options)
+            self._record(path, "ok", "", options, submitter=submitter)
         except OSError as exc:
             self._log(f"move failed for {path.name}: {exc}")
             self._stat("errors", 1)
             self._record(path, "error", f"move failed: {exc}", options)
 
-    def _record(self, path: Path, status: str, detail: str, options: PrintOptions) -> None:
+    def _record(
+        self,
+        path: Path,
+        status: str,
+        detail: str,
+        options: PrintOptions,
+        submitter: str | None = None,
+    ) -> None:
         self._record_history(
             PrintRecord(
                 timestamp=datetime.now().isoformat(timespec="seconds"),
@@ -399,6 +431,7 @@ class PrinterWorker(threading.Thread):
                 copies=options.copies,
                 sides=_sides_label(options.sides),
                 color=_color_label(options.color),
+                submitter=submitter or _submitter_for(path, self._watch_dir),
             )
         )
 
@@ -425,7 +458,13 @@ class InboxHandler(FileSystemEventHandler):
         path = Path(raw_path)
         if path.suffix.lower() not in EXTS:
             return
-        if path.parent != self._watch_dir:
+        try:
+            relative = path.relative_to(self._watch_dir)
+        except ValueError:
+            return
+        if not relative.parts:
+            return
+        if relative.parts[0] == PRINTED_SUBDIR:
             return
         if self._printed_dir in path.parents:
             return
@@ -435,11 +474,17 @@ class InboxHandler(FileSystemEventHandler):
 
 
 def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -> None:
+    printed_dir = watch_dir / PRINTED_SUBDIR
     while not stop.is_set():
         try:
-            for entry in watch_dir.iterdir():
-                if entry.is_file() and entry.suffix.lower() in EXTS:
-                    worker.submit(entry)
+            for entry in watch_dir.rglob("*"):
+                if not entry.is_file():
+                    continue
+                if entry.suffix.lower() not in EXTS:
+                    continue
+                if printed_dir in entry.parents or entry.parent == printed_dir:
+                    continue
+                worker.submit(entry)
         except FileNotFoundError:
             pass
         stop.wait(POLL_INTERVAL_SEC)
@@ -488,6 +533,7 @@ class App(tk.Tk):
 
         self._worker = PrinterWorker(
             sumatra=sumatra,
+            watch_dir=self._watch_dir,
             printed_dir=self._printed_dir,
             log_cb=self._log_threadsafe,
             stat_cb=self._stat_threadsafe,
@@ -673,15 +719,16 @@ class App(tk.Tk):
         notebook.add(history, text="History")
         tree_inner = tk.Frame(history, bg=COLOR_PANEL, padx=2, pady=2)
         tree_inner.pack(fill="both", expand=True)
-        columns = ("time", "file", "status", "printer", "copies", "sides", "color")
+        columns = ("time", "submitter", "file", "status", "printer", "copies", "sides", "color")
         self._history_tree = ttk.Treeview(
             tree_inner, columns=columns, show="headings", style="App.Treeview",
         )
         headings = {
             "time": ("Time", 110),
-            "file": ("File", 280),
-            "status": ("Status", 80),
-            "printer": ("Printer", 160),
+            "submitter": ("Submitter", 110),
+            "file": ("File", 240),
+            "status": ("Status", 70),
+            "printer": ("Printer", 150),
             "copies": ("Copies", 60),
             "sides": ("Sides", 110),
             "color": ("Color", 80),
@@ -838,7 +885,7 @@ class App(tk.Tk):
     def _start_observer(self) -> None:
         observer = Observer()
         handler = InboxHandler(self._watch_dir, self._printed_dir, self._worker)
-        observer.schedule(handler, str(self._watch_dir), recursive=False)
+        observer.schedule(handler, str(self._watch_dir), recursive=True)
         observer.start()
         self._observer = observer
 
@@ -909,6 +956,7 @@ class App(tk.Tk):
                 "", "end",
                 values=(
                     record.time_short,
+                    record.submitter or "—",
                     record.filename,
                     status_glyph,
                     record.printer,
