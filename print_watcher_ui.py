@@ -19,6 +19,7 @@ patches with the per-machine inbox + SumatraPDF locations) and fall back to
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import queue
@@ -28,7 +29,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
@@ -90,6 +91,103 @@ class PrintOptions:
 
         cmd += ["-silent", "-exit-on-print", str(target)]
         return cmd
+
+
+@dataclass(frozen=True)
+class PrintRecord:
+    """One row of the print history."""
+
+    timestamp: str          # ISO 8601 (local time) for human display
+    filename: str
+    status: str             # "ok" | "error"
+    detail: str = ""        # short note (sumatra exit, move failure, etc.)
+    printer: str = ""       # display label, "" means default
+    copies: int = 1
+    sides: str = ""         # display label
+    color: str = ""         # display label
+
+    @property
+    def time_short(self) -> str:
+        try:
+            return datetime.fromisoformat(self.timestamp).strftime("%m/%d %H:%M")
+        except ValueError:
+            return self.timestamp
+
+
+class HistoryStore:
+    """Persistent record of past print jobs in %APPDATA%\\PrintWatcher\\history.json."""
+
+    MAX_ENTRIES = 200
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+        self._records: list[PrintRecord] = self._load()
+
+    def _load(self) -> list[PrintRecord]:
+        if not self._path.exists():
+            return []
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            log.warning("history load failed: %s", exc)
+            return []
+        out: list[PrintRecord] = []
+        for entry in data[-self.MAX_ENTRIES:] if isinstance(data, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                out.append(PrintRecord(**entry))
+            except TypeError:
+                continue
+        return out
+
+    def _save(self) -> None:
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps([asdict(r) for r in self._records], indent=2),
+                encoding="utf-8",
+            )
+            tmp.replace(self._path)
+        except OSError as exc:
+            log.warning("history save failed: %s", exc)
+
+    def append(self, record: PrintRecord) -> None:
+        with self._lock:
+            self._records.append(record)
+            if len(self._records) > self.MAX_ENTRIES:
+                self._records = self._records[-self.MAX_ENTRIES:]
+            self._save()
+
+    def recent(self) -> list[PrintRecord]:
+        with self._lock:
+            return list(reversed(self._records))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._records = []
+            self._save()
+
+
+def default_history_path() -> Path:
+    base = os.environ.get("APPDATA")
+    if base:
+        return Path(base) / "PrintWatcher" / "history.json"
+    return Path.home() / ".printwatcher" / "history.json"
+
+
+def _sides_label(value: str | None) -> str:
+    if not value:
+        return "default"
+    return {"simplex": "single", "duplex": "duplex (long)", "duplexshort": "duplex (short)"}.get(value, value)
+
+
+def _color_label(value: str | None) -> str:
+    if not value:
+        return "default"
+    return {"color": "color", "monochrome": "mono"}.get(value, value)
 
 
 def list_printers() -> list[str]:
@@ -198,6 +296,7 @@ class PrinterWorker(threading.Thread):
         log_cb: Callable[[str], None],
         stat_cb: Callable[[str, int], None],
         options_provider: Callable[[], PrintOptions],
+        history_cb: Callable[[PrintRecord], None],
     ) -> None:
         super().__init__(daemon=True, name="PrinterWorker")
         self._sumatra = sumatra
@@ -205,6 +304,7 @@ class PrinterWorker(threading.Thread):
         self._log = log_cb
         self._stat = stat_cb
         self._options_provider = options_provider
+        self._record_history = history_cb
         self._queue: queue.Queue[Path] = queue.Queue()
         self._inflight: set[Path] = set()
         self._lock = threading.Lock()
@@ -241,6 +341,7 @@ class PrinterWorker(threading.Thread):
         if not _wait_until_stable(path):
             self._log(f"file never stabilised: {path.name}")
             self._stat("errors", 1)
+            self._record(path, "error", "never stabilised", self._options_provider())
             return
 
         options = self._options_provider()
@@ -249,9 +350,9 @@ class PrinterWorker(threading.Thread):
         if options.copies > 1:
             details.append(f"{options.copies} copies")
         if options.sides:
-            details.append(options.sides)
+            details.append(_sides_label(options.sides))
         if options.color:
-            details.append(options.color)
+            details.append(_color_label(options.color))
         self._log(f"printing: {path.name} ({', '.join(details)})")
 
         try:
@@ -262,15 +363,18 @@ class PrinterWorker(threading.Thread):
         except FileNotFoundError:
             self._log(f"SumatraPDF not found at {self._sumatra}")
             self._stat("errors", 1)
+            self._record(path, "error", f"SumatraPDF missing: {self._sumatra}", options)
             return
         except OSError as exc:
             self._log(f"launch failed for {path.name}: {exc}")
             self._stat("errors", 1)
+            self._record(path, "error", f"launch failed: {exc}", options)
             return
 
         if result.returncode != 0:
             self._log(f"sumatra exit={result.returncode}: {path.name}")
             self._stat("errors", 1)
+            self._record(path, "error", f"sumatra exit={result.returncode}", options)
             return
 
         try:
@@ -278,9 +382,25 @@ class PrinterWorker(threading.Thread):
             path.rename(target)
             self._log(f"done: {path.name}")
             self._stat("printed", 1)
+            self._record(path, "ok", "", options)
         except OSError as exc:
             self._log(f"move failed for {path.name}: {exc}")
             self._stat("errors", 1)
+            self._record(path, "error", f"move failed: {exc}", options)
+
+    def _record(self, path: Path, status: str, detail: str, options: PrintOptions) -> None:
+        self._record_history(
+            PrintRecord(
+                timestamp=datetime.now().isoformat(timespec="seconds"),
+                filename=path.name,
+                status=status,
+                detail=detail,
+                printer=options.printer or "default",
+                copies=options.copies,
+                sides=_sides_label(options.sides),
+                color=_color_label(options.color),
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -354,13 +474,17 @@ class App(tk.Tk):
         self._stop = threading.Event()
         self._observer: Observer | None = None
         self._print_options = PrintOptions()
+        self._history = HistoryStore(default_history_path())
+        self._stats["printed"] = sum(1 for r in self._history.recent() if r.status == "ok")
+        self._stats["errors"] = sum(1 for r in self._history.recent() if r.status == "error")
 
         self.title("PrintWatcher")
-        self.geometry("820x620")
-        self.minsize(660, 520)
+        self.geometry("960x680")
+        self.minsize(720, 560)
         self.configure(bg=COLOR_BG)
 
         self._build_ui()
+        self._refresh_history()
 
         self._worker = PrinterWorker(
             sumatra=sumatra,
@@ -368,6 +492,7 @@ class App(tk.Tk):
             log_cb=self._log_threadsafe,
             stat_cb=self._stat_threadsafe,
             options_provider=lambda: self._print_options,
+            history_cb=self._record_threadsafe,
         )
         self._worker.start()
         self._start_observer()
@@ -386,6 +511,13 @@ class App(tk.Tk):
     # ---- layout -------------------------------------------------------
 
     def _build_ui(self) -> None:
+        self._init_styles()
+        self._build_hero()
+        self._build_options_panel()
+        self._build_tabs()
+        self._build_action_bar()
+
+    def _init_styles(self) -> None:
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
@@ -396,113 +528,197 @@ class App(tk.Tk):
             background=COLOR_PANEL,
             foreground=COLOR_TEXT,
             borderwidth=0,
-            padding=(12, 6),
+            padding=(14, 8),
+            font=("Segoe UI", 10),
         )
         style.map(
             "Action.TButton",
             background=[("active", COLOR_BTN_HOVER)],
             foreground=[("active", COLOR_TEXT)],
         )
-
-        header = tk.Frame(self, bg=COLOR_BG, padx=18, pady=14)
-        header.pack(fill="x")
-
-        self._dot = tk.Canvas(
-            header, width=14, height=14, bg=COLOR_BG, highlightthickness=0
+        style.configure(
+            "Pause.TButton",
+            background=COLOR_OK,
+            foreground=COLOR_BG,
+            borderwidth=0,
+            padding=(16, 8),
+            font=("Segoe UI", 10, "bold"),
         )
-        self._dot.pack(side="left")
+        style.map(
+            "Pause.TButton",
+            background=[("active", COLOR_BTN_HOVER)],
+        )
+        style.configure(
+            "App.TNotebook",
+            background=COLOR_BG,
+            borderwidth=0,
+            tabmargins=(0, 0, 0, 0),
+        )
+        style.configure(
+            "App.TNotebook.Tab",
+            background=COLOR_BG,
+            foreground=COLOR_MUTED,
+            padding=(18, 8),
+            font=("Segoe UI", 10),
+            borderwidth=0,
+        )
+        style.map(
+            "App.TNotebook.Tab",
+            background=[("selected", COLOR_PANEL)],
+            foreground=[("selected", COLOR_TEXT)],
+            expand=[("selected", (0, 0, 0, 0))],
+        )
+        style.configure(
+            "App.Treeview",
+            background=COLOR_LOG_BG,
+            fieldbackground=COLOR_LOG_BG,
+            foreground=COLOR_LOG_TEXT,
+            rowheight=26,
+            borderwidth=0,
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "App.Treeview.Heading",
+            background=COLOR_PANEL,
+            foreground=COLOR_TEXT,
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padding=(8, 6),
+        )
+        style.map("App.Treeview.Heading", background=[("active", COLOR_BTN_HOVER)])
+
+    def _build_hero(self) -> None:
+        hero = tk.Frame(self, bg=COLOR_BG, padx=22, pady=18)
+        hero.pack(fill="x")
+
+        title = tk.Frame(hero, bg=COLOR_BG)
+        title.pack(fill="x")
+
+        self._dot = tk.Canvas(title, width=18, height=18, bg=COLOR_BG, highlightthickness=0)
+        self._dot.pack(side="left", pady=(4, 0))
         self._set_dot(COLOR_OK)
 
-        self._status_label = tk.Label(
-            header,
-            text="Active",
-            fg=COLOR_TEXT,
-            bg=COLOR_BG,
-            font=("Segoe UI", 13, "bold"),
-            padx=10,
-        )
-        self._status_label.pack(side="left")
+        wordmark = tk.Frame(title, bg=COLOR_BG)
+        wordmark.pack(side="left", padx=(12, 0))
 
         tk.Label(
-            header,
-            text=str(self._watch_dir),
-            fg=COLOR_MUTED,
-            bg=COLOR_BG,
-            font=("Segoe UI", 9),
-        ).pack(side="left", padx=(8, 0))
+            wordmark, text="PrintWatcher", fg=COLOR_TEXT, bg=COLOR_BG,
+            font=("Segoe UI Semibold", 18),
+        ).pack(anchor="w")
+        self._status_label = tk.Label(
+            wordmark, text="Active · watching for new files", fg=COLOR_MUTED,
+            bg=COLOR_BG, font=("Segoe UI", 10),
+        )
+        self._status_label.pack(anchor="w", pady=(2, 0))
 
-        stats = tk.Frame(self, bg=COLOR_BG, padx=18)
+        self._pause_btn = ttk.Button(
+            title, text="Pause", style="Pause.TButton", command=self._toggle_pause,
+        )
+        self._pause_btn.pack(side="right", anchor="n")
+
+        path_label = tk.Label(
+            hero, text=str(self._watch_dir), fg=COLOR_MUTED, bg=COLOR_BG,
+            font=("Segoe UI", 9),
+        )
+        path_label.pack(anchor="w", pady=(10, 12))
+
+        stats = tk.Frame(hero, bg=COLOR_BG)
         stats.pack(fill="x")
         self._stat_labels: dict[str, tk.Label] = {}
-        for key, title in (
-            ("printed", "Printed"),
-            ("pending", "In queue"),
-            ("errors", "Errors"),
-        ):
-            cell = tk.Frame(stats, bg=COLOR_PANEL, padx=16, pady=10)
-            cell.pack(side="left", padx=(0, 10), pady=(0, 8))
+        cells = (("printed", "Printed"), ("pending", "In queue"), ("errors", "Errors"))
+        for idx, (key, label) in enumerate(cells):
+            cell = tk.Frame(stats, bg=COLOR_PANEL, padx=18, pady=14)
+            cell.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 10, 0))
+            stats.grid_columnconfigure(idx, weight=1, uniform="stat")
             tk.Label(
-                cell, text=title, fg=COLOR_MUTED, bg=COLOR_PANEL,
-                font=("Segoe UI", 9),
+                cell, text=label.upper(), fg=COLOR_MUTED, bg=COLOR_PANEL,
+                font=("Segoe UI", 8, "bold"),
             ).pack(anchor="w")
             value = tk.Label(
-                cell, text="0", fg=COLOR_TEXT, bg=COLOR_PANEL,
-                font=("Segoe UI", 18, "bold"),
+                cell, text=str(self._stats[key]), fg=COLOR_TEXT, bg=COLOR_PANEL,
+                font=("Segoe UI Semibold", 22),
             )
-            value.pack(anchor="w")
+            value.pack(anchor="w", pady=(4, 0))
             self._stat_labels[key] = value
 
-        self._build_options_panel()
+    def _build_tabs(self) -> None:
+        wrap = tk.Frame(self, bg=COLOR_BG, padx=22, pady=8)
+        wrap.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(wrap, style="App.TNotebook")
+        notebook.pack(fill="both", expand=True)
 
-        log_wrap = tk.Frame(self, bg=COLOR_BG, padx=18, pady=8)
-        log_wrap.pack(fill="both", expand=True)
+        # Activity tab
+        activity = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(activity, text="Activity")
+        log_inner = tk.Frame(activity, bg=COLOR_PANEL, padx=2, pady=2)
+        log_inner.pack(fill="both", expand=True)
         self._log_text = tk.Text(
-            log_wrap,
+            log_inner,
             bg=COLOR_LOG_BG,
             fg=COLOR_LOG_TEXT,
             insertbackground=COLOR_LOG_TEXT,
             font=("Consolas", 10),
             wrap="none",
             relief="flat",
-            padx=10,
-            pady=8,
+            padx=12,
+            pady=10,
         )
         self._log_text.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(
-            log_wrap, orient="vertical", command=self._log_text.yview
-        )
-        scroll.pack(side="right", fill="y")
-        self._log_text.configure(yscrollcommand=scroll.set, state="disabled")
+        log_scroll = ttk.Scrollbar(log_inner, orient="vertical", command=self._log_text.yview)
+        log_scroll.pack(side="right", fill="y")
+        self._log_text.configure(yscrollcommand=log_scroll.set, state="disabled")
 
-        bar = tk.Frame(self, bg=COLOR_BG, padx=18, pady=14)
-        bar.pack(fill="x")
-        self._pause_btn = ttk.Button(
-            bar, text="Pause", style="Action.TButton", command=self._toggle_pause
+        # History tab
+        history = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(history, text="History")
+        tree_inner = tk.Frame(history, bg=COLOR_PANEL, padx=2, pady=2)
+        tree_inner.pack(fill="both", expand=True)
+        columns = ("time", "file", "status", "printer", "copies", "sides", "color")
+        self._history_tree = ttk.Treeview(
+            tree_inner, columns=columns, show="headings", style="App.Treeview",
         )
-        self._pause_btn.pack(side="left")
-        ttk.Button(
-            bar, text="Open inbox", style="Action.TButton",
-            command=lambda: self._open_folder(self._watch_dir),
-        ).pack(side="left", padx=8)
-        ttk.Button(
-            bar, text="Open printed", style="Action.TButton",
-            command=lambda: self._open_folder(self._printed_dir),
-        ).pack(side="left", padx=8)
-        ttk.Button(
-            bar, text="Rescan now", style="Action.TButton",
-            command=self._rescan_now,
-        ).pack(side="left", padx=8)
-        ttk.Button(
-            bar, text="Clear log", style="Action.TButton",
-            command=self._clear_log,
-        ).pack(side="left", padx=8)
-        ttk.Button(
-            bar, text="Quit", style="Action.TButton", command=self._on_close
-        ).pack(side="right")
+        headings = {
+            "time": ("Time", 110),
+            "file": ("File", 280),
+            "status": ("Status", 80),
+            "printer": ("Printer", 160),
+            "copies": ("Copies", 60),
+            "sides": ("Sides", 110),
+            "color": ("Color", 80),
+        }
+        for col, (label, width) in headings.items():
+            self._history_tree.heading(col, text=label)
+            anchor = "e" if col == "copies" else "w"
+            self._history_tree.column(col, width=width, anchor=anchor, stretch=(col == "file"))
+        self._history_tree.tag_configure("ok", foreground=COLOR_OK)
+        self._history_tree.tag_configure("error", foreground=COLOR_ERR)
+        self._history_tree.pack(side="left", fill="both", expand=True)
+        tree_scroll = ttk.Scrollbar(tree_inner, orient="vertical", command=self._history_tree.yview)
+        tree_scroll.pack(side="right", fill="y")
+        self._history_tree.configure(yscrollcommand=tree_scroll.set)
+
+    def _build_action_bar(self) -> None:
+        bar = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
+        bar.pack(fill="x")
+        ttk.Button(bar, text="Open inbox", style="Action.TButton",
+                   command=lambda: self._open_folder(self._watch_dir)).pack(side="left")
+        ttk.Button(bar, text="Open printed", style="Action.TButton",
+                   command=lambda: self._open_folder(self._printed_dir)).pack(side="left", padx=8)
+        ttk.Button(bar, text="Rescan now", style="Action.TButton",
+                   command=self._rescan_now).pack(side="left", padx=8)
+        ttk.Button(bar, text="Clear log", style="Action.TButton",
+                   command=self._clear_log).pack(side="left", padx=8)
+        ttk.Button(bar, text="Clear history", style="Action.TButton",
+                   command=self._clear_history).pack(side="left", padx=8)
+        ttk.Button(bar, text="Quit", style="Action.TButton",
+                   command=self._on_close).pack(side="right")
 
     def _set_dot(self, color: str) -> None:
         self._dot.delete("all")
-        self._dot.create_oval(2, 2, 13, 13, fill=color, outline="")
+        # Outer halo + filled center for a softer pill look
+        self._dot.create_oval(0, 0, 18, 18, fill=color, outline=color)
+        self._dot.create_oval(5, 5, 13, 13, fill=COLOR_BG, outline="")
+        self._dot.create_oval(7, 7, 11, 11, fill=color, outline="")
 
     # ---- print options panel -----------------------------------------
 
@@ -640,13 +856,13 @@ class App(tk.Tk):
     def _toggle_pause(self) -> None:
         if self._worker.paused.is_set():
             self._worker.paused.clear()
-            self._status_label.configure(text="Active")
+            self._status_label.configure(text="Active · watching for new files")
             self._set_dot(COLOR_OK)
             self._pause_btn.configure(text="Pause")
             self._log_threadsafe("resumed")
         else:
             self._worker.paused.set()
-            self._status_label.configure(text="Paused")
+            self._status_label.configure(text="Paused · queued jobs are held")
             self._set_dot(COLOR_ERR)
             self._pause_btn.configure(text="Resume")
             self._log_threadsafe("paused")
@@ -676,10 +892,41 @@ class App(tk.Tk):
         self._log_text.delete("1.0", "end")
         self._log_text.configure(state="disabled")
 
+    def _clear_history(self) -> None:
+        self._history.clear()
+        self._refresh_history()
+        self._log_threadsafe("history cleared")
+
+    def _refresh_history(self) -> None:
+        if not hasattr(self, "_history_tree"):
+            return
+        for iid in self._history_tree.get_children():
+            self._history_tree.delete(iid)
+        for record in self._history.recent():
+            status_glyph = "OK" if record.status == "ok" else "FAIL"
+            tag = "ok" if record.status == "ok" else "error"
+            self._history_tree.insert(
+                "", "end",
+                values=(
+                    record.time_short,
+                    record.filename,
+                    status_glyph,
+                    record.printer,
+                    record.copies,
+                    record.sides,
+                    record.color,
+                ),
+                tags=(tag,),
+            )
+
     # ---- thread-safe UI updates --------------------------------------
 
     def _log_threadsafe(self, message: str) -> None:
         self.after(0, self._append_log, message)
+
+    def _record_threadsafe(self, record: PrintRecord) -> None:
+        self._history.append(record)
+        self.after(0, self._refresh_history)
 
     def _append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
