@@ -329,16 +329,16 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
 # UI
 # ---------------------------------------------------------------------------
 
-# Palette: https://coolors.co/2a1e5c-0a0f0d-d9bdc5-548c2f-78c3fb
-COLOR_BG = "#2a1e5c"          # base — deep purple
-COLOR_PANEL = "#372967"       # base lifted for cards
-COLOR_LOG_BG = "#0a0f0d"      # near-black log surface
-COLOR_TEXT = "#d9bdc5"        # pale blush
-COLOR_MUTED = "#9a8388"       # blush desaturated for secondary labels
+# Palette: https://coolors.co/d9bdc5-548c2f-78c3fb (dark amethyst + onyx removed)
+COLOR_BG = "#d9bdc5"          # blush — base surface
+COLOR_PANEL = "#e9d4da"       # blush lifted for cards
+COLOR_LOG_BG = "#fff5f8"      # blush near-white for log surface
+COLOR_TEXT = "#1a3550"        # sky darkened — only derivation, needed for contrast
+COLOR_MUTED = "#5b6976"       # TEXT desaturated for secondary labels
 COLOR_OK = "#548c2f"          # green — active / running
 COLOR_ERR = "#78c3fb"         # sky blue — paused / idle
-COLOR_LOG_TEXT = "#d9bdc5"    # match TEXT, palette has no separate body tone
-COLOR_BTN_HOVER = "#443378"   # base lifted further for button hover
+COLOR_LOG_TEXT = "#1a3550"    # match TEXT for high-contrast log lines
+COLOR_BTN_HOVER = "#c9adb5"   # blush darkened for button hover
 
 
 class App(tk.Tk):
