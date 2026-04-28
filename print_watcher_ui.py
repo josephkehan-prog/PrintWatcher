@@ -1,4 +1,4 @@
-"""PrintWatcher with a desktop UI.
+r"""PrintWatcher with a desktop UI.
 
 A small Tkinter window showing live status, stats, and a scrollable event log.
 Adds two reliability fixes over the tray version:
