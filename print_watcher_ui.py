@@ -662,8 +662,21 @@ THEMES: dict[str, dict[str, str]] = {
         "OK": "#548c2f", "ERR": "#78c3fb",
         "LOG_TEXT": "#1a3550", "BTN_HOVER": "#c9adb5",
     },
+    "Glass": {
+        # Apple-inspired translucent palette. Pairs with Win11 Mica
+        # backdrop + window alpha 0.93. On non-Win11 fallbacks the
+        # palette still reads as a clean light theme.
+        "BG": "#f2f4f8", "PANEL": "#ffffff", "LOG_BG": "#fafbfc",
+        "TEXT": "#1d1d1f",        # Apple primary text
+        "MUTED": "#6e6e73",       # Apple secondary text
+        "OK": "#0a84ff",          # Apple system blue
+        "ERR": "#ff453a",         # Apple system red
+        "LOG_TEXT": "#1d1d1f", "BTN_HOVER": "#e5e5ea",
+    },
 }
 DEFAULT_THEME = "Ocean"
+DARK_THEMES = frozenset({"Ocean", "Forest", "Indigo"})
+GLASSY_THEMES = frozenset({"Glass"})
 
 # Module-level color names update when the theme changes.
 COLOR_BG = THEMES[DEFAULT_THEME]["BG"]
@@ -757,6 +770,8 @@ class App(tk.Tk):
         self._build_ui()
         self._bind_keyboard_shortcuts()
         self._refresh_history()
+        # Apply glass effects after the window is visible so DWM has an HWND
+        self.after(50, self._apply_glass_effects)
 
         self._worker = PrinterWorker(
             sumatra=sumatra,
@@ -1086,6 +1101,78 @@ class App(tk.Tk):
 
     # ---- window chrome -----------------------------------------------
 
+    # ---- glass / Mica effects -----------------------------------------
+
+    def _apply_glass_effects(self) -> None:
+        """Apply window translucency + Win11 Mica backdrop where supported."""
+        is_glass = self._theme_name in GLASSY_THEMES
+        is_dark = self._theme_name in DARK_THEMES
+
+        # Whole-window alpha — lighter for Glass, fully opaque otherwise.
+        try:
+            self.attributes("-alpha", 0.93 if is_glass else 1.0)
+        except tk.TclError:
+            pass
+
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+        except ImportError:
+            return
+
+        try:
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                hwnd = self.winfo_id()
+            dwmapi = ctypes.windll.dwmapi
+        except (OSError, AttributeError):
+            return
+
+        # DWMWA_USE_IMMERSIVE_DARK_MODE = 20: makes the system titlebar
+        # match the theme. Win10 19041+ and Win11.
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        dark_value = ctypes.c_int(1 if is_dark else 0)
+        try:
+            dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(dark_value), ctypes.sizeof(dark_value),
+            )
+        except OSError:
+            pass
+
+        # DWMWA_SYSTEMBACKDROP_TYPE = 38 (Win11 only): real frosted-glass
+        # backdrop using the OS compositor. Fails silently on Win10.
+        DWMWA_SYSTEMBACKDROP_TYPE = 38
+        DWMSBT_NONE = 1
+        DWMSBT_MAINWINDOW = 2      # Mica
+        DWMSBT_TRANSIENTWINDOW = 3  # Acrylic (more blur, less battery-friendly)
+        backdrop = DWMSBT_TRANSIENTWINDOW if is_glass else (
+            DWMSBT_MAINWINDOW if is_dark else DWMSBT_NONE
+        )
+        backdrop_value = ctypes.c_int(backdrop)
+        try:
+            dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_SYSTEMBACKDROP_TYPE,
+                ctypes.byref(backdrop_value), ctypes.sizeof(backdrop_value),
+            )
+        except OSError:
+            pass
+
+        # Round window corners on Win11 — DWMWA_WINDOW_CORNER_PREFERENCE=33.
+        # 2 = round, 3 = small round.
+        DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        DWMWCP_ROUND = 2
+        corner_value = ctypes.c_int(DWMWCP_ROUND)
+        try:
+            dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                ctypes.byref(corner_value), ctypes.sizeof(corner_value),
+            )
+        except OSError:
+            pass
+
     def _set_window_icon(self) -> None:
         icon_ico = Path(__file__).resolve().parent / "assets" / "printwatcher.ico"
         icon_png = Path(__file__).resolve().parent / "assets" / "printwatcher.png"
@@ -1191,10 +1278,15 @@ class App(tk.Tk):
         _apply_theme(name)
         self._preferences["theme"] = name
         save_preferences(self._preferences)
-        self._log_threadsafe(f"theme changed to {name} (full reload on next launch)")
+        # Glass effects (Mica backdrop, alpha, dark titlebar) can re-apply
+        # live without rebuilding widgets; widget-level recolour still
+        # needs a relaunch.
+        self._apply_glass_effects()
+        self._log_threadsafe(f"theme changed to {name} (widgets reload on next launch)")
         self._show_modal_message(
             "Theme switched",
-            f"Theme set to {name}. Restart PrintWatcher to apply.",
+            f"Theme set to {name}. Restart PrintWatcher to refresh widget colours.\n\n"
+            "The window backdrop and titlebar updated live.",
         )
 
     def _show_modal_message(self, title: str, message: str) -> None:
