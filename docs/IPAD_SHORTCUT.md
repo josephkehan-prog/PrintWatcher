@@ -2,15 +2,18 @@
 
 The desktop UI is great when you're at the Windows machine, but the iPad share
 sheet is the only thing you have on the move. This guide walks through building
-two Apple Shortcuts that turn the share sheet into a real interactive
+three Apple Shortcuts that turn the share sheet into a real interactive
 print dialog:
 
 - **Quick Print** — pick a destination preset folder, save. Two taps.
 - **Custom Print** — prompts for copies, sides, color, and (optionally)
   submitter, then builds the path automatically. Roughly five taps.
+- **Schedule Print** — share PDF → pick a release time → file holds in
+  `_scheduled/` until that moment, then prints. Three taps.
 
-Both rely on the watcher's existing path-options convention
-(`PrintInbox/Submitter__opts/file__opts.pdf`). Nothing new on the Windows side.
+All three rely on the watcher's existing path-options convention
+(`PrintInbox/Submitter__opts/file__opts.pdf`). Nothing new on the Windows side
+beyond the helper scripts in `scripts/` (already shipped).
 
 ## Prerequisites
 
@@ -18,8 +21,16 @@ Both rely on the watcher's existing path-options convention
   you removed it).
 - OneDrive app installed and signed in to the same account that syncs
   `PrintInbox` to your Windows machine.
-- Run `python scripts/setup_inbox_presets.py` once on Windows so the preset
-  folders exist (`__copies=30`, `__duplex`, etc.).
+- Run these two commands once on Windows so the supporting infrastructure
+  exists:
+
+  ```powershell
+  python scripts\setup_inbox_presets.py     # creates __copies=30, __duplex, etc.
+  python scripts\schedule_print.py --daemon # release loop for "Schedule Print"
+  ```
+
+  Drop the daemon into your Startup folder (the same way you wired up the
+  main watcher) so it survives reboots.
 
 ## Recipe A — Quick Print (no prompts)
 
@@ -113,6 +124,73 @@ Now: select PDF → Share → **Custom Print** → answer prompts → Saved.
 Watcher detects the file, applies path overrides, prints, logs the
 submitter.
 
+## Recipe C — Schedule Print (release at a specific time)
+
+Send a PDF to the inbox *now* but have it sit in `_scheduled/` until a
+chosen time. Useful when you want a class set ready on the printer at 7:55 AM
+without sprinting to the workroom in the morning, or when the printer is
+busy and you'd rather defer a long packet to lunchtime.
+
+The Windows-side `schedule_print.py --daemon` watches `_scheduled/` and
+moves files into the main inbox when their `YYYY-MM-DDTHH-MM__` filename
+prefix is reached. This Shortcut does the iPad half: prompts for a time,
+formats it, prepends to the filename, saves to `_scheduled/`.
+
+Build steps:
+
+1. **New Shortcut** → name it **Schedule Print** → enable **Show in Share
+   Sheet** for Files + Images.
+2. **Date** action (under Date) — Get Current Date. Variable: `Now`.
+3. **Adjust Date** — *Add `1` Hour to* `Now`. Variable: `DefaultWhen`.
+   (Used as the picker's default — one hour from now.)
+4. **Get Date from Input** action — Prompt: `Print at?` Default Date:
+   `DefaultWhen`. Style: **Date and Time**. Variable: `When`.
+5. **Format Date** — Date: `When`. Format: **Custom**.
+   - Format String: `yyyy-MM-dd'T'HH-mm`
+   - Variable: `Stamp` (produces e.g. `2026-04-30T07-55`).
+6. **Get Name of File** (the share-sheet input). Variable: `OriginalName`.
+7. **Text** — build the destination filename:
+   ```
+   [Stamp]__[OriginalName]
+   ```
+   Variable: `ScheduledName`.
+8. **Save File** — target `OneDrive/PrintInbox/_scheduled/`. **File Name** =
+   `ScheduledName`. **Overwrite if exists** off, **Ask Where to Save** off.
+
+Now: select PDF → Share → **Schedule Print** → pick a date/time → Saved.
+
+The Windows daemon polls every 30 s; when the prefix time arrives it strips
+the prefix and moves the file into the inbox root, where the main watcher
+picks it up and prints with whatever options the desktop UI is currently set
+to.
+
+### Combining Schedule with options
+
+Want "30 copies, duplex, at 7:55 AM"? Edit step 7 to also append the options
+suffix you'd use in Recipe A or B:
+
+```
+[Stamp]__[OriginalName-no-extension]__copies=30_duplex.pdf
+```
+
+The watcher parses both the `_scheduled` filename prefix (handled by the
+daemon) and the `__opts` suffix (handled by the watcher itself), so they
+compose cleanly. Verify on Windows with:
+
+```powershell
+python scripts\preview_shortcut_path.py --copies 30 --sides duplex --filename "2026-04-30T07-55__quiz.pdf"
+```
+
+### Cancel or list scheduled files from Windows
+
+```powershell
+python scripts\schedule_print.py --list             # show what's queued
+python scripts\schedule_print.py --cancel quiz      # cancel anything matching "quiz"
+```
+
+There is no iPad-side cancel; deleting the file from the OneDrive Files app
+in `_scheduled/` works equally well.
+
 ## Adding the shortcut to the iPad Home Screen
 
 Both Shortcuts can be added as a Home Screen icon:
@@ -136,6 +214,21 @@ That prints what the resulting OneDrive path will be, so you can compare
 against what your Shortcut actually generates. (Script lives at
 `scripts/preview_shortcut_path.py`.)
 
+## Tools running quietly behind the scenes
+
+Several `scripts/*.py` helpers improve the iPad experience without you
+having to think about them. Run each once or wire to your Startup folder
+once, then forget.
+
+| Helper | What it fixes for iPad users |
+|---|---|
+| `scripts/dedupe_inbox.py --apply` | iPad share sheet sometimes saves a file twice on a flaky cellular connection. Run this on a daily Task Scheduler job (or before a class set) and accidental duplicates move to `_skipped/` instead of double-printing 60 sheets. |
+| `scripts/schedule_print.py --daemon` | Powers the Schedule Print Shortcut above. Without the daemon, files saved to `_scheduled/` will never release. |
+| `scripts/cleanup_printed.py` *(if you've added it)* | Sweeps old `_printed/<submitter>/` files so OneDrive doesn't bloat — relevant because every iPad-shared PDF lives there forever otherwise. |
+| `scripts/pdf_inspect.py` | Run on the Windows side before triggering a giant iPad-shared packet: confirms page count, detects unusually large files. |
+| `scripts/clear_queue.py` | When a Printix job gets stuck and a re-share from iPad keeps "not printing", clear the queue once and re-share. Saves the trip to Windows Settings. |
+| `scripts/web_to_pdf.py` | If you can't share a webpage from Safari on iPad (e.g. it's a paywall or Edge-only resource), render it from Windows and drop in inbox; no iPad work required. |
+
 ## Common Shortcut gotchas
 
 | Symptom | Cause / fix |
@@ -145,12 +238,15 @@ against what your Shortcut actually generates. (Script lives at
 | Filename doubles up `.pdf.pdf` | Step 9 didn't strip the extension. Add a **Match Text** action before re-adding `.pdf`. |
 | Submitter shows as `local` in History | Submitter prompt was left empty — that's fine, expected. |
 | Preset folder unknown when typed | Spelling differs from what `setup_inbox_presets.py` created. Run `python scripts/setup_inbox_presets.py --list` to confirm. |
+| Schedule Print file never releases | `schedule_print.py --daemon` isn't running on the Windows side. Restart it from Startup or PowerShell. `python scripts\schedule_print.py --list` confirms what's queued. |
+| Same iPad share creates two prints | Cellular flake duplicated the OneDrive write. `python scripts\dedupe_inbox.py` will catch it; `--apply` moves the duplicate aside before it prints. |
 
 ## What this gives you
 
 - Real iPad UI for per-job options without ever editing a filename.
 - Submitter attribution from the iPad (matters when several staff share
   the same OneDrive inbox).
+- Time-scheduled printing — set 7:55 AM from the iPad the night before.
 - Same path-options grammar the desktop UI already understands — no
   watcher changes.
 - Home Screen tile for one-tap repeat workflows.
