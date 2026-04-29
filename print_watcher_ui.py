@@ -561,11 +561,23 @@ class PrinterWorker(threading.Thread):
 # Filesystem watcher
 # ---------------------------------------------------------------------------
 
+SKIPPED_SUBDIR = "_skipped"
+SCHEDULED_SUBDIR = "_scheduled"
+RESERVED_TOP_LEVEL = frozenset({PRINTED_SUBDIR, SKIPPED_SUBDIR, SCHEDULED_SUBDIR})
+
+
 class InboxHandler(FileSystemEventHandler):
-    def __init__(self, watch_dir: Path, printed_dir: Path, worker: PrinterWorker) -> None:
+    """Filesystem event handler — forwards eligible files to a dispatch callback."""
+
+    def __init__(
+        self,
+        watch_dir: Path,
+        printed_dir: Path,
+        dispatch: Callable[[Path], None],
+    ) -> None:
         self._watch_dir = watch_dir
         self._printed_dir = printed_dir
-        self._worker = worker
+        self._dispatch = dispatch
 
     def on_created(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
@@ -585,17 +597,24 @@ class InboxHandler(FileSystemEventHandler):
             return
         if not relative.parts:
             return
-        if relative.parts[0] == PRINTED_SUBDIR:
+        if relative.parts[0] in RESERVED_TOP_LEVEL:
             return
         if self._printed_dir in path.parents:
             return
         if not path.is_file():
             return
-        self._worker.submit(path)
+        self._dispatch(path)
 
 
-def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -> None:
+def _poll_inbox(
+    watch_dir: Path,
+    dispatch: Callable[[Path], None],
+    stop: threading.Event,
+) -> None:
     printed_dir = watch_dir / PRINTED_SUBDIR
+    skipped_dir = watch_dir / SKIPPED_SUBDIR
+    scheduled_dir = watch_dir / SCHEDULED_SUBDIR
+    reserved_roots = (printed_dir, skipped_dir, scheduled_dir)
     while not stop.is_set():
         try:
             for entry in watch_dir.rglob("*"):
@@ -603,9 +622,9 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
                     continue
                 if entry.suffix.lower() not in EXTS:
                     continue
-                if printed_dir in entry.parents or entry.parent == printed_dir:
+                if any(root in entry.parents or entry.parent == root for root in reserved_roots):
                     continue
-                worker.submit(entry)
+                dispatch(entry)
         except FileNotFoundError:
             pass
         stop.wait(POLL_INTERVAL_SEC)
@@ -722,6 +741,11 @@ class App(tk.Tk):
         _apply_theme(self._theme_name)
         self._tray_icon = None
         self._sort_state: dict[str, bool] = {}     # column -> reverse?
+        self._hold_mode = tk.BooleanVar(value=self._preferences.get("hold_mode", False))
+        self._hold_mode.trace_add("write", lambda *_: self._on_hold_mode_change())
+        self._pending: list[Path] = []
+        self._pending_seen: set[Path] = set()
+        self._pending_lock = threading.Lock()
 
         self.title("PrintWatcher")
         self.geometry("960x680")
@@ -747,7 +771,7 @@ class App(tk.Tk):
         self._start_observer()
         threading.Thread(
             target=_poll_inbox,
-            args=(self._watch_dir, self._worker, self._stop),
+            args=(self._watch_dir, self._dispatch_arrival, self._stop),
             daemon=True,
             name="InboxPoller",
         ).start()
@@ -968,6 +992,67 @@ class App(tk.Tk):
         self._history_tree.configure(yscrollcommand=tree_scroll.set)
 
         self._build_history_context_menu()
+
+        # Pending tab (hold-and-release queue)
+        pending = tk.Frame(notebook, bg=COLOR_PANEL)
+        notebook.add(pending, text="Pending")
+        self._notebook = notebook
+
+        toolbar = tk.Frame(pending, bg=COLOR_PANEL, padx=10, pady=8)
+        toolbar.pack(fill="x")
+        ttk.Checkbutton(
+            toolbar, text="Hold incoming files (review before printing)",
+            variable=self._hold_mode,
+        ).pack(side="left")
+        self._pending_count_label = tk.Label(
+            toolbar, text="Pending  0", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 9),
+        )
+        self._pending_count_label.pack(side="right")
+
+        actions = tk.Frame(pending, bg=COLOR_PANEL, padx=10, pady=4)
+        actions.pack(fill="x")
+        ttk.Button(
+            actions, text="Print selected", style="Action.TButton",
+            command=self._print_pending_selected,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            actions, text="Print all", style="Action.TButton",
+            command=self._print_pending_all,
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            actions, text="Skip selected", style="Action.TButton",
+            command=self._skip_pending_selected,
+        ).pack(side="left", padx=6)
+        tk.Label(
+            actions,
+            text="right-click for actions, double-click to print",
+            fg=COLOR_MUTED, bg=COLOR_PANEL, font=("Segoe UI", 8, "italic"),
+        ).pack(side="right")
+
+        pending_inner = tk.Frame(pending, bg=COLOR_PANEL, padx=2, pady=2)
+        pending_inner.pack(fill="both", expand=True)
+        pending_columns = ("submitter", "file", "options", "path_overrides")
+        self._pending_tree = ttk.Treeview(
+            pending_inner, columns=pending_columns, show="headings", style="App.Treeview",
+        )
+        for col, (label, width, stretch) in {
+            "submitter": ("Submitter", 110, False),
+            "file": ("File", 280, True),
+            "options": ("Options", 160, False),
+            "path_overrides": ("Path overrides", 160, False),
+        }.items():
+            self._pending_tree.heading(col, text=label)
+            self._pending_tree.column(col, width=width, stretch=stretch, anchor="w")
+        self._pending_tree.pack(side="left", fill="both", expand=True)
+        pending_scroll = ttk.Scrollbar(
+            pending_inner, orient="vertical", command=self._pending_tree.yview,
+        )
+        pending_scroll.pack(side="right", fill="y")
+        self._pending_tree.configure(yscrollcommand=pending_scroll.set)
+        self._pending_tree.bind("<Double-Button-1>",
+                                 lambda _e: self._print_pending_selected())
+        self._build_pending_context_menu()
 
     def _build_action_bar(self) -> None:
         bar = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
@@ -1347,10 +1432,132 @@ class App(tk.Tk):
 
     def _start_observer(self) -> None:
         observer = Observer()
-        handler = InboxHandler(self._watch_dir, self._printed_dir, self._worker)
+        handler = InboxHandler(self._watch_dir, self._printed_dir, self._dispatch_arrival)
         observer.schedule(handler, str(self._watch_dir), recursive=True)
         observer.start()
         self._observer = observer
+
+    # ---- arrival dispatch / hold mode --------------------------------
+
+    def _dispatch_arrival(self, path: Path) -> None:
+        """Decide whether to queue immediately or hold for review."""
+        if self._hold_mode.get():
+            self.after(0, self._add_to_pending, path)
+        else:
+            self._worker.submit(path)
+
+    def _on_hold_mode_change(self) -> None:
+        self._preferences["hold_mode"] = bool(self._hold_mode.get())
+        save_preferences(self._preferences)
+        if self._hold_mode.get():
+            self._log_threadsafe("hold mode ON — incoming files queue in Pending")
+        else:
+            # release everything currently pending now that auto-print is back on
+            with self._pending_lock:
+                pending = list(self._pending)
+                self._pending = []
+                self._pending_seen = set()
+            for path in pending:
+                self._worker.submit(path)
+            if pending:
+                self._log_threadsafe(f"hold mode OFF — released {len(pending)} pending file(s)")
+            else:
+                self._log_threadsafe("hold mode OFF")
+            self._refresh_pending()
+
+    def _add_to_pending(self, path: Path) -> None:
+        with self._pending_lock:
+            if path in self._pending_seen:
+                return
+            self._pending.append(path)
+            self._pending_seen.add(path)
+        self._log_threadsafe(f"held: {path.name}")
+        self._refresh_pending()
+
+    def _refresh_pending(self) -> None:
+        if not hasattr(self, "_pending_tree"):
+            return
+        # Drop entries whose underlying file no longer exists on disk
+        with self._pending_lock:
+            self._pending = [p for p in self._pending if p.exists()]
+            self._pending_seen = {p for p in self._pending_seen if p in self._pending}
+            snapshot = list(self._pending)
+        for iid in self._pending_tree.get_children():
+            self._pending_tree.delete(iid)
+        self._pending_row_records: dict[str, Path] = {}
+        ui_options = self._print_options
+        for path in snapshot:
+            options, tokens, submitter = resolve_path_options(path, self._watch_dir, ui_options)
+            options_summary: list[str] = []
+            if options.copies > 1:
+                options_summary.append(f"{options.copies}x")
+            if options.sides:
+                options_summary.append(_sides_label(options.sides))
+            if options.color:
+                options_summary.append(_color_label(options.color))
+            iid = self._pending_tree.insert(
+                "", "end",
+                values=(
+                    submitter or "—",
+                    path.name,
+                    ", ".join(options_summary) or "—",
+                    ", ".join(tokens) if tokens else "—",
+                ),
+            )
+            self._pending_row_records[iid] = path
+        if hasattr(self, "_pending_count_label"):
+            self._pending_count_label.configure(
+                text=f"Pending  {len(snapshot)}"
+            )
+
+    def _print_pending_selected(self) -> None:
+        if not hasattr(self, "_pending_tree"):
+            return
+        for iid in self._pending_tree.selection():
+            path = self._pending_row_records.get(iid)
+            if path is None:
+                continue
+            with self._pending_lock:
+                if path in self._pending:
+                    self._pending.remove(path)
+                self._pending_seen.discard(path)
+            self._worker.submit(path)
+            self._log_threadsafe(f"released: {path.name}")
+        self._refresh_pending()
+
+    def _print_pending_all(self) -> None:
+        with self._pending_lock:
+            snapshot = list(self._pending)
+            self._pending = []
+            self._pending_seen = set()
+        for path in snapshot:
+            self._worker.submit(path)
+        if snapshot:
+            self._log_threadsafe(f"released {len(snapshot)} pending file(s)")
+        self._refresh_pending()
+
+    def _skip_pending_selected(self) -> None:
+        if not hasattr(self, "_pending_tree"):
+            return
+        skipped_dir = self._watch_dir / SKIPPED_SUBDIR
+        for iid in self._pending_tree.selection():
+            path = self._pending_row_records.get(iid)
+            if path is None:
+                continue
+            with self._pending_lock:
+                if path in self._pending:
+                    self._pending.remove(path)
+                self._pending_seen.discard(path)
+            try:
+                skipped_dir.mkdir(parents=True, exist_ok=True)
+                target = skipped_dir / path.name
+                if target.exists():
+                    target = skipped_dir / f"{target.stem}-{int(time.time())}{target.suffix}"
+                path.rename(target)
+                self._log_threadsafe(f"skipped: {path.name} (moved to {SKIPPED_SUBDIR}/)")
+            except OSError as exc:
+                self._log_threadsafe(f"skip failed for {path.name}: {exc}")
+        self._refresh_pending()
 
     def _on_close(self) -> None:
         self._stop.set()
@@ -1479,6 +1686,59 @@ class App(tk.Tk):
         self._render_history(self._history.recent())
 
     # ---- history row interactions ------------------------------------
+
+    def _build_pending_context_menu(self) -> None:
+        menu = tk.Menu(
+            self, tearoff=0, bg=COLOR_PANEL, fg=COLOR_TEXT,
+            activebackground=COLOR_BTN_HOVER, activeforeground=COLOR_TEXT, bd=0,
+        )
+        menu.add_command(label="Print now", command=self._print_pending_selected)
+        menu.add_command(label="Skip / move to _skipped", command=self._skip_pending_selected)
+        menu.add_separator()
+        menu.add_command(label="Open file", command=self._open_pending_selected)
+        menu.add_command(label="Show in folder", command=self._show_pending_in_folder)
+        self._pending_menu = menu
+
+        def on_right_click(event):
+            iid = self._pending_tree.identify_row(event.y)
+            if iid:
+                self._pending_tree.selection_set(iid)
+                self._pending_tree.focus(iid)
+                try:
+                    self._pending_menu.tk_popup(event.x_root, event.y_root)
+                finally:
+                    self._pending_menu.grab_release()
+        self._pending_tree.bind("<Button-3>", on_right_click)
+
+    def _selected_pending_path(self) -> Path | None:
+        sel = self._pending_tree.selection()
+        if not sel:
+            return None
+        return self._pending_row_records.get(sel[0])
+
+    def _open_pending_selected(self) -> None:
+        path = self._selected_pending_path()
+        if path is None or not path.exists():
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except OSError as exc:
+            self._log_threadsafe(f"open failed: {exc}")
+
+    def _show_pending_in_folder(self) -> None:
+        path = self._selected_pending_path()
+        if path is None:
+            return
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path.parent)])
+        except OSError as exc:
+            self._log_threadsafe(f"reveal failed: {exc}")
 
     def _build_history_context_menu(self) -> None:
         menu = tk.Menu(
