@@ -104,6 +104,19 @@ Outputs PASS / WARN / FAIL for: Python version, MS Store Python alias detection,
 
 `--json` emits machine-readable output if you want to wire it into a setup pipeline.
 
+## Companion scripts
+
+Each is standalone and discovers your `PrintInbox` automatically by reading the same path that `bootstrap.ps1` patched into `print_watcher_tray.py`.
+
+| Script | Purpose | Extra deps |
+|---|---|---|
+| `scripts/name_stamper.py` | Watches `PrintInbox\stamped\`, overlays a name/date/period stamp at top-right of every page, then forwards into the inbox | `pypdf`, `reportlab` |
+| `scripts/roster_split.py` | Splits a multi-page packet PDF into one file per roster row (CSV); optional `--to-inbox` queues every split for printing | `pypdf` |
+| `scripts/redact.py` | Crops header/footer bands off PDFs (one-shot or watch mode under `PrintInbox\redact\`) | `pypdf` |
+| `scripts/email_to_inbox.py` | IMAP-polls a mailbox folder, saves PDF/image attachments from unread messages into the inbox; uses stdlib only, configured via env vars (`IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER`) | none |
+| `scripts/screenshot_to_print.py` | Watches a Screenshots folder, copies (or `--move`s) every new image into the inbox | none |
+| `scripts/web_to_pdf.py` | Renders a URL to PDF via headless Edge/Chrome and drops it in the inbox; no Python rendering deps required | none (Edge/Chrome) |
+
 ### Stapling, hole-punching, and other finishing options
 
 SumatraPDF's `-print-settings` doesn't expose finishing — there's no toggle for "staple top-left" or "two-hole punch". Two options that do work:
