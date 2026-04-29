@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import logging
 import math
 import os
@@ -37,6 +38,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -135,6 +137,139 @@ def names_only(rows: list[dict]) -> list[str]:
     return [r["name"].strip() for r in rows if r.get("name", "").strip()]
 
 
+# ---- Header normalization for delimited imports ---------------------------
+
+HEADER_ALIASES: dict[str, str] = {
+    "classicalid": "classical_id",
+    "id": "classical_id",
+    "first": "first",
+    "first_name": "first",
+    "last": "last",
+    "last_name": "last",
+    "gender": "gender",
+    "sex": "gender",
+    "status": "status",
+    "retained": "retained",
+    "2024_2025_classroom": "prev_classroom",
+    "previous_classroom": "prev_classroom",
+    "prior_classroom": "prev_classroom",
+    "2025_2026_classroom": "current_classroom",
+    "classroom": "current_classroom",
+    "ela_avg": "ela_avg",
+    "ela": "ela_avg",
+    "math_avg": "math_avg",
+    "math": "math_avg",
+    "reading_level": "reading_level",
+    "reading_category": "reading_category",
+    "iep": "iep",
+    "informal_eval_in_progress": "eval_in_progress",
+    "evaluation_in_progress": "eval_in_progress",
+    "ell": "ell",
+    "absences": "absences",
+    "referrals": "referrals",
+    "reflections": "reflections",
+    "notes": "notes",
+}
+
+
+def _normalize_header(raw: str) -> str:
+    cleaned = (raw or "").strip().lower()
+    cleaned = re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")
+    return HEADER_ALIASES.get(cleaned, cleaned)
+
+
+def _detect_delimiter(text: str, suffix: str) -> str | None:
+    suffix = suffix.lower()
+    if suffix == ".tsv":
+        return "\t"
+    if suffix == ".csv":
+        return ","
+    first = text.split("\n", 1)[0] if text else ""
+    if "\t" in first:
+        return "\t"
+    if "," in first:
+        return ","
+    return None
+
+
+def _import_delimited(path: Path, text: str, delimiter: str) -> tuple[int, int]:
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+    raw_rows = list(reader)
+
+    fields = reader.fieldnames or []
+    column_map: dict[str, str] = {}
+    seen: set[str] = set()
+    for field in fields:
+        normalized = _normalize_header(field)
+        # de-duplicate accidental column collisions after normalization
+        suffix = 2
+        while normalized in seen:
+            normalized = f"{normalized}_{suffix}"
+            suffix += 1
+        column_map[field] = normalized
+        seen.add(normalized)
+
+    rows: list[dict] = []
+    for raw in raw_rows:
+        row: dict[str, str] = {}
+        for original, normalized in column_map.items():
+            value = (raw.get(original) or "").strip()
+            # Collapse internal whitespace + lone double-quotes that often appear
+            # in spreadsheet exports of empty rich-text cells (e.g. "\n").
+            if value in ('"', '"\n"', '\n'):
+                value = ""
+            row[normalized] = value
+        first = row.get("first", "").strip()
+        last = row.get("last", "").strip()
+        existing_name = row.get("name", "").strip()
+        if not existing_name:
+            row["name"] = (f"{first} {last}").strip()
+        if not row.get("name"):
+            continue
+        rows.append(row)
+
+    existing_header, existing_rows = read_roster(path)
+    by_name = {r["name"].strip().lower(): r for r in existing_rows}
+    added = 0
+    updated = 0
+    for row in rows:
+        key = row["name"].strip().lower()
+        if key in by_name:
+            for field, value in row.items():
+                if value:
+                    by_name[key][field] = value
+            updated += 1
+        else:
+            by_name[key] = row
+            added += 1
+
+    incoming_columns = list(column_map.values())
+    final_header = ["name"]
+    for col in incoming_columns + existing_header:
+        if col not in final_header:
+            final_header.append(col)
+    write_roster(path, final_header, list(by_name.values()))
+    return added, updated
+
+
+def _import_plain(path: Path, text: str) -> tuple[int, int]:
+    header, rows = read_roster(path)
+    existing = {r["name"].strip().lower() for r in rows}
+    added = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.split(",")[0].strip()
+        if not line or line.lower() in existing:
+            continue
+        rows.append({"name": line})
+        existing.add(line.lower())
+        added += 1
+    write_roster(path, header, rows)
+    return added, 0
+
+
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
@@ -225,22 +360,25 @@ def cmd_import(args: argparse.Namespace) -> int:
     if not args.file.exists():
         log.error("file not found: %s", args.file)
         return 1
-    header, rows = read_roster(path)
-    existing = {r["name"].strip().lower() for r in rows}
-    added = 0
-    for raw in args.file.read_text(encoding="utf-8-sig").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        # first column if comma-delimited
-        line = line.split(",")[0].strip()
-        if not line or line.lower() in existing:
-            continue
-        rows.append({"name": line})
-        existing.add(line.lower())
-        added += 1
-    write_roster(path, header, rows)
-    log.info("imported %d new scholar(s); roster has %d total", added, len(rows))
+    text = args.file.read_text(encoding="utf-8-sig")
+    delimiter = _detect_delimiter(text, args.file.suffix)
+    if args.format == "tsv":
+        delimiter = "\t"
+    elif args.format == "csv":
+        delimiter = ","
+    elif args.format == "plain":
+        delimiter = None
+
+    if delimiter is None:
+        added, updated = _import_plain(path, text)
+        log.info("imported %d name(s) from plain text", added)
+    else:
+        added, updated = _import_delimited(path, text, delimiter)
+        log.info(
+            "imported delimited file (%s): %d added, %d updated, %d total",
+            "tab" if delimiter == "\t" else "comma",
+            added, updated, len(read_roster(path)[1]),
+        )
     return 0
 
 
@@ -252,6 +390,180 @@ def cmd_export(args: argparse.Namespace) -> int:
     out = args.out or Path.cwd() / f"{slugify(args.classname)}.csv"
     shutil.copy2(path, out)
     log.info("wrote %s", out)
+    return 0
+
+
+def _parse_percent(value: str) -> float | None:
+    if not value:
+        return None
+    cleaned = value.strip().rstrip("%").strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _truthy_field(value: str) -> bool:
+    """Treat 'IEP', 'Yes', '504', 'Retained' etc. as positive flags."""
+    return bool(value and value.strip() and value.strip().lower() not in {"no", "false", "0", "n"})
+
+
+def cmd_info(args: argparse.Namespace) -> int:
+    path = class_path(args.classname)
+    if not path.exists():
+        log.error("no roster for %s", args.classname)
+        return 1
+    header, rows = read_roster(path)
+    needle = args.name.strip().lower()
+    matches = [r for r in rows if needle in r.get("name", "").lower()]
+    if not matches:
+        log.error("no scholar matching %s", args.name)
+        return 1
+    if len(matches) > 1:
+        log.warning("multiple matches; showing the first")
+    row = matches[0]
+    name = row.get("name", "").strip()
+    log.info("%s", name)
+    log.info("%s", "-" * max(8, len(name)))
+    width = max(len(c) for c in header)
+    for col in header:
+        if col == "name":
+            continue
+        value = (row.get(col) or "").strip()
+        if not value:
+            continue
+        log.info("  %-*s  %s", width, col + ":", value)
+    return 0
+
+
+def cmd_stats(args: argparse.Namespace) -> int:
+    path = class_path(args.classname)
+    if not path.exists():
+        log.error("no roster for %s", args.classname)
+        return 1
+    _, rows = read_roster(path)
+    total = len(rows)
+    log.info("%s — %d scholars", args.classname, total)
+    log.info("")
+
+    def section(title: str) -> None:
+        log.info("%s", title)
+
+    status_counts = Counter((r.get("status") or "—").strip() for r in rows)
+    if any(status_counts):
+        section("Status")
+        for label, count in status_counts.most_common():
+            log.info("  %-15s %d", label or "(blank)", count)
+        log.info("")
+
+    gender_counts = Counter((r.get("gender") or "—").strip() for r in rows)
+    if any(gender_counts):
+        section("Gender")
+        for label, count in gender_counts.most_common():
+            log.info("  %-15s %d", label or "(blank)", count)
+        log.info("")
+
+    flags = (
+        ("IEPs", lambda r: _truthy_field(r.get("iep", ""))),
+        ("ELLs", lambda r: _truthy_field(r.get("ell", ""))),
+        ("Retained", lambda r: _truthy_field(r.get("retained", ""))),
+        ("Eval in progress", lambda r: _truthy_field(r.get("eval_in_progress", ""))),
+        ("Reading 'Below'",
+         lambda r: r.get("reading_category", "").strip().lower() == "below"),
+    )
+    section("Flags")
+    for label, predicate in flags:
+        n = sum(1 for r in rows if predicate(r))
+        pct = (n / total * 100) if total else 0
+        log.info("  %-20s %d  (%.0f%%)", label, n, pct)
+    log.info("")
+
+    ela_vals = [v for v in (_parse_percent(r.get("ela_avg", "")) for r in rows) if v is not None]
+    math_vals = [v for v in (_parse_percent(r.get("math_avg", "")) for r in rows) if v is not None]
+    if ela_vals or math_vals:
+        section("Scores")
+        if ela_vals:
+            log.info("  ELA  avg %.1f%%  (n=%d, %.0f-%.0f)",
+                     sum(ela_vals) / len(ela_vals), len(ela_vals),
+                     min(ela_vals), max(ela_vals))
+        if math_vals:
+            log.info("  Math avg %.1f%%  (n=%d, %.0f-%.0f)",
+                     sum(math_vals) / len(math_vals), len(math_vals),
+                     min(math_vals), max(math_vals))
+        log.info("")
+
+    levels = Counter((r.get("reading_level") or "").strip() for r in rows)
+    if any(levels):
+        section("Reading Level distribution")
+        # Sort by level letter (alphabetic), blanks last
+        keys = sorted(levels.keys(), key=lambda k: (k == "", k.upper()))
+        for level in keys:
+            label = level if level else "(blank)"
+            log.info("  %-8s %d", label, levels[level])
+        log.info("")
+
+    classroom_counts = Counter((r.get("prev_classroom") or "").strip() for r in rows)
+    if any(c for c in classroom_counts if c):
+        section("Coming from (2024-2025)")
+        for label, count in classroom_counts.most_common():
+            if not label:
+                continue
+            log.info("  %-15s %d", label, count)
+
+    return 0
+
+
+def cmd_filter(args: argparse.Namespace) -> int:
+    path = class_path(args.classname)
+    if not path.exists():
+        log.error("no roster for %s", args.classname)
+        return 1
+    _, rows = read_roster(path)
+    matched = list(rows)
+    if args.iep:
+        matched = [r for r in matched if _truthy_field(r.get("iep", ""))]
+    if args.ell:
+        matched = [r for r in matched if _truthy_field(r.get("ell", ""))]
+    if args.retained:
+        matched = [r for r in matched if _truthy_field(r.get("retained", ""))]
+    if args.below:
+        matched = [r for r in matched if r.get("reading_category", "").strip().lower() == "below"]
+    if args.status:
+        wanted = args.status.lower()
+        matched = [r for r in matched if r.get("status", "").strip().lower() == wanted]
+    if args.gender:
+        wanted = args.gender.upper()
+        matched = [r for r in matched if r.get("gender", "").strip().upper() == wanted]
+    if args.reading_level:
+        wanted = args.reading_level.upper()
+        matched = [r for r in matched if r.get("reading_level", "").strip().upper() == wanted]
+    if args.prev_classroom:
+        wanted = args.prev_classroom.lower()
+        matched = [r for r in matched if r.get("prev_classroom", "").strip().lower() == wanted]
+
+    log.info("matched %d scholar(s):", len(matched))
+    for row in matched:
+        badges: list[str] = []
+        if row.get("status"):
+            badges.append(row["status"][:1].upper())
+        if _truthy_field(row.get("iep", "")):
+            badges.append("IEP")
+        if _truthy_field(row.get("ell", "")):
+            badges.append("ELL")
+        if _truthy_field(row.get("retained", "")):
+            badges.append("RET")
+        level = (row.get("reading_level") or "").strip()
+        if level:
+            badges.append(f"L:{level}")
+        cat = (row.get("reading_category") or "").strip()
+        if cat:
+            badges.append(cat[:5].upper())
+        line = row.get("name", "")
+        if badges:
+            line = f"{line:<28} [{' '.join(badges)}]"
+        log.info("  %s", line)
     return 0
 
 
@@ -588,10 +900,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("classname")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("import", help="import names from a text file (one per line)")
+    p = sub.add_parser(
+        "import",
+        help="import names from a TSV / CSV / plain text file; auto-detects format",
+    )
     p.add_argument("classname")
     p.add_argument("file", type=Path)
+    p.add_argument(
+        "--format", choices=("auto", "tsv", "csv", "plain"), default="auto",
+        help="force a specific format (default: detected from extension or contents)",
+    )
     p.set_defaults(func=cmd_import)
+
+    p = sub.add_parser("info", help="show all metadata for one scholar (substring match)")
+    p.add_argument("classname")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_info)
+
+    p = sub.add_parser("stats", help="class-level summary (IEPs, ELLs, scores, levels)")
+    p.add_argument("classname")
+    p.set_defaults(func=cmd_stats)
+
+    p = sub.add_parser("filter", help="filter scholars by metadata flags")
+    p.add_argument("classname")
+    p.add_argument("--iep", action="store_true", help="only scholars with an IEP")
+    p.add_argument("--ell", action="store_true", help="only English Language Learners")
+    p.add_argument("--retained", action="store_true", help="only retained scholars")
+    p.add_argument("--below", action="store_true",
+                   help="only scholars in reading category 'Below'")
+    p.add_argument("--status", help="filter by Status (Incoming / Returning)")
+    p.add_argument("--gender", help="filter by gender (M / F)")
+    p.add_argument("--reading-level", help="filter by reading level letter (A-Z)")
+    p.add_argument("--prev-classroom", help="filter by 2024-2025 classroom")
+    p.set_defaults(func=cmd_filter)
 
     p = sub.add_parser("export", help="copy the roster CSV elsewhere")
     p.add_argument("classname")

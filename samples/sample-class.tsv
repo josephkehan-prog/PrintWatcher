@@ -1,0 +1,9 @@
+ClassicalID	Last	First	Gender	Status	Retained	2024-2025 Classroom	ELA Avg	Math Avg	Reading Level	Reading Category	IEP	Informal Eval in Progress?	ELL	Absences	Referrals	Reflections	2025-2026 Classroom	Notes
+0000001	Doe	Jane	F	Returning		ClassroomA	62%	74%	N			""	""	3	1	0	SampleHomeroom
+0000002	Smith	John	M	Returning		ClassroomB	48%	55%	M	Below	IEP	""	""	7.5	5	2	SampleHomeroom
+0000003	Park	Sam	M	Returning		ClassroomA	71%	80%	O			""	Yes	2	0	0	SampleHomeroom
+0000004	Wong	Alex	M	Returning		ClassroomC	83%	92%	R			""	""	1	0	0	SampleHomeroom
+0000005	Garcia	Maria	F	Incoming					O			""	""				SampleHomeroom
+0000006	Khan	Ayla	F	Returning	Retained	ClassroomA	55%	60%	M	Below		""	Yes	4	2	1	SampleHomeroom
+0000007	Owens	Trey	M	Returning		ClassroomB	68%	78%	P			""	""	2.5	0	0	SampleHomeroom
+0000008	Patel	Riya	F	Returning		ClassroomC	77%	85%	R			""	""	1.5	0	0	SampleHomeroom
