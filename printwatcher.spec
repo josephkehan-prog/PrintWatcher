@@ -1,7 +1,13 @@
-# PyInstaller spec for the desktop UI build.
-# Build:
-#   pip install pyinstaller
+# PyInstaller spec for the desktop UI binary (windowed, no console).
+#
+# Build both binaries (UI + CLI):
+#   pip install pyinstaller watchdog pystray pillow pypdf reportlab pypdfium2
 #   pyinstaller printwatcher.spec --noconfirm
+#   pyinstaller printwatcher-cli.spec --noconfirm
+#
+# Outputs:
+#   dist/PrintWatcher.exe       windowed UI (double-click to launch)
+#   dist/PrintWatcher-cli.exe   console, dispatches every helper
 
 block_cipher = None
 
@@ -16,6 +22,11 @@ a = Analysis(
     hiddenimports=[
         'pystray._win32',
         'PIL._tkinter_finder',
+        'pypdf',
+        'pypdfium2',
+        'reportlab',
+        'reportlab.pdfgen.canvas',
+        'reportlab.lib.pagesizes',
     ],
     hookspath=[],
     hooksconfig={},
@@ -46,7 +57,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,                          # GUI app — no console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

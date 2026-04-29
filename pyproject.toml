@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "printwatcher"
-version = "0.2.0"
+version = "0.3.0"
 description = "Auto-print files dropped into a OneDrive folder. Tray + desktop UI + per-job options + multi-user history."
 readme = "README.md"
 license = { text = "MIT" }
@@ -53,7 +53,8 @@ Repository = "https://github.com/josephkehan-prog/PrintWatcher"
 Issues = "https://github.com/josephkehan-prog/PrintWatcher/issues"
 
 [project.scripts]
-printwatcher = "print_watcher_ui:main"
+printwatcher = "printwatcher_app:main"
+printwatcher-ui = "print_watcher_ui:main"
 printwatcher-tray = "print_watcher_tray:main"
 printwatcher-cli = "print_watcher:main"
 
@@ -65,7 +66,9 @@ py-modules = [
     "print_watcher",
     "print_watcher_tray",
     "print_watcher_ui",
+    "printwatcher_app",
 ]
+packages = ["scripts"]
 include-package-data = true
 
 [tool.setuptools.package-data]

@@ -33,7 +33,38 @@ iPad (Share → Save to Files → OneDrive/PrintInbox)
 - OneDrive signed in (or iCloud Drive / Dropbox — just edit `WATCH_DIR`)
 - A default printer configured
 
-## Install
+## Single .exe (no Python required)
+
+Each release on GitHub ships two Windows binaries that bundle the
+entire toolkit:
+
+| Binary | Subsystem | Use it for |
+|---|---|---|
+| `PrintWatcher.exe` | windowed | Double-click to launch the desktop UI. Pin to Start, drop in Startup folder, etc. |
+| `PrintWatcher-cli.exe` | console | Subcommand dispatch — every helper script in one binary, with output going to your terminal |
+
+Companion CLIs are addressed by short subcommand:
+
+```powershell
+PrintWatcher-cli.exe roster stats Hamilton
+PrintWatcher-cli.exe pdf-inspect packet.pdf
+PrintWatcher-cli.exe report --to-inbox
+PrintWatcher-cli.exe verify
+PrintWatcher-cli.exe schedule worksheet.pdf --at "8am tomorrow"
+PrintWatcher-cli.exe --list
+PrintWatcher-cli.exe roster --help
+```
+
+The full subcommand list lives in `printwatcher_app.py`. Subcommand
+names follow the script filenames with `_` swapped for `-`
+(`pdf_inspect.py` → `pdf-inspect`, etc.). All optional Python
+dependencies (`pypdf`, `reportlab`, `pypdfium2`) are baked into the
+binaries — no `pip install` required.
+
+Drop both .exes into `C:\Tools\PrintWatcher\` and add that folder to
+your PATH if you want to invoke from any prompt.
+
+## Install (from source)
 
 Open PowerShell (not admin) in the repo folder:
 

@@ -39,7 +39,7 @@ from typing import Callable
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 EXTS = frozenset({".pdf", ".png", ".jpg", ".jpeg"})
 POLL_INTERVAL_SEC = 5.0

@@ -25,7 +25,7 @@ jobs:
         run: pytest -q
 
   build-windows-exe:
-    name: Build Windows .exe
+    name: Build Windows binaries
     needs: test
     runs-on: windows-latest
     steps:
@@ -36,14 +36,29 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller watchdog pystray pillow
-      - name: Build
+          python -m pip install pyinstaller watchdog pystray pillow pypdf reportlab pypdfium2
+      - name: Build UI binary (windowed)
         run: pyinstaller printwatcher.spec --noconfirm
+      - name: Build CLI binary (console)
+        run: pyinstaller printwatcher-cli.spec --noconfirm
+      - name: Bundle release zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item dist/PrintWatcher.exe release/
+          Copy-Item dist/PrintWatcher-cli.exe release/
+          Copy-Item README.md release/
+          Copy-Item LICENSE release/
+          Copy-Item assets/printwatcher.png release/icon.png
+          Compress-Archive -Path release/* -DestinationPath release/PrintWatcher-windows.zip
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: PrintWatcher-windows
-          path: dist/PrintWatcher.exe
+          path: |
+            dist/PrintWatcher.exe
+            dist/PrintWatcher-cli.exe
+            release/PrintWatcher-windows.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -62,5 +77,8 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: release/PrintWatcher.exe
+          files: |
+            release/dist/PrintWatcher.exe
+            release/dist/PrintWatcher-cli.exe
+            release/release/PrintWatcher-windows.zip
           generate_release_notes: true
