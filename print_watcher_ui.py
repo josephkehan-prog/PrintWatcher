@@ -39,6 +39,8 @@ from typing import Callable
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+APP_VERSION = "0.2.0"
+
 EXTS = frozenset({".pdf", ".png", ".jpg", ".jpeg"})
 POLL_INTERVAL_SEC = 5.0
 STABLE_CHECKS = 3
@@ -47,6 +49,11 @@ LOG_LINE_LIMIT = 500
 PRINTED_SUBDIR = "_printed"
 
 DEFAULT_SUMATRA = Path(r"C:\Tools\SumatraPDF\SumatraPDF.exe")
+
+
+def _logs_dir() -> Path:
+    base = os.environ.get("APPDATA")
+    return Path(base) / "PrintWatcher" / "logs" if base else Path.home() / ".printwatcher" / "logs"
 
 DEFAULT_PRINTER_LABEL = "Windows default printer"
 SIDES_CHOICES = (
@@ -608,16 +615,87 @@ def _poll_inbox(watch_dir: Path, worker: PrinterWorker, stop: threading.Event) -
 # UI
 # ---------------------------------------------------------------------------
 
-# Palette: https://coolors.co/00a6fb-0582ca-006494
-COLOR_BG = "#006494"          # deep teal-blue — base
-COLOR_PANEL = "#0582ca"       # medium blue — cards lifted from base
-COLOR_LOG_BG = "#003e5c"      # base deepened for log surface
-COLOR_TEXT = "#e0f2ff"        # derived near-white with sky tint
-COLOR_MUTED = "#a3c4d9"       # TEXT desaturated for secondary labels
-COLOR_OK = "#00a6fb"          # brightest sky blue — active / running
-COLOR_ERR = "#6b8a9c"         # derived slate — paused / idle (palette has no warm accent)
-COLOR_LOG_TEXT = "#e0f2ff"    # match TEXT
-COLOR_BTN_HOVER = "#0a96e0"   # between PANEL and OK for button hover
+# Palette presets. Each key maps to a dict of role → hex. Switched at
+# runtime via the View → Theme menu; selection persists in
+# %APPDATA%/PrintWatcher/preferences.json.
+THEMES: dict[str, dict[str, str]] = {
+    "Ocean": {
+        "BG": "#006494", "PANEL": "#0582ca", "LOG_BG": "#003e5c",
+        "TEXT": "#e0f2ff", "MUTED": "#a3c4d9",
+        "OK": "#00a6fb", "ERR": "#6b8a9c",
+        "LOG_TEXT": "#e0f2ff", "BTN_HOVER": "#0a96e0",
+    },
+    "Forest": {
+        "BG": "#0a210f", "PANEL": "#14591d", "LOG_BG": "#04140a",
+        "TEXT": "#e1e289", "MUTED": "#b8b370",
+        "OK": "#99aa38", "ERR": "#acd2ed",
+        "LOG_TEXT": "#e1e289", "BTN_HOVER": "#1d7028",
+    },
+    "Indigo": {
+        "BG": "#2e294e", "PANEL": "#3a345e", "LOG_BG": "#1f1c36",
+        "TEXT": "#f5fbef", "MUTED": "#9a879d",
+        "OK": "#129490", "ERR": "#7a3b69",
+        "LOG_TEXT": "#d4cdd6", "BTN_HOVER": "#4a4470",
+    },
+    "Blush": {
+        "BG": "#d9bdc5", "PANEL": "#e9d4da", "LOG_BG": "#fff5f8",
+        "TEXT": "#1a3550", "MUTED": "#5b6976",
+        "OK": "#548c2f", "ERR": "#78c3fb",
+        "LOG_TEXT": "#1a3550", "BTN_HOVER": "#c9adb5",
+    },
+}
+DEFAULT_THEME = "Ocean"
+
+# Module-level color names update when the theme changes.
+COLOR_BG = THEMES[DEFAULT_THEME]["BG"]
+COLOR_PANEL = THEMES[DEFAULT_THEME]["PANEL"]
+COLOR_LOG_BG = THEMES[DEFAULT_THEME]["LOG_BG"]
+COLOR_TEXT = THEMES[DEFAULT_THEME]["TEXT"]
+COLOR_MUTED = THEMES[DEFAULT_THEME]["MUTED"]
+COLOR_OK = THEMES[DEFAULT_THEME]["OK"]
+COLOR_ERR = THEMES[DEFAULT_THEME]["ERR"]
+COLOR_LOG_TEXT = THEMES[DEFAULT_THEME]["LOG_TEXT"]
+COLOR_BTN_HOVER = THEMES[DEFAULT_THEME]["BTN_HOVER"]
+
+
+def _apply_theme(name: str) -> None:
+    """Update module-level color constants from THEMES[name]."""
+    global COLOR_BG, COLOR_PANEL, COLOR_LOG_BG, COLOR_TEXT, COLOR_MUTED
+    global COLOR_OK, COLOR_ERR, COLOR_LOG_TEXT, COLOR_BTN_HOVER
+    palette = THEMES.get(name) or THEMES[DEFAULT_THEME]
+    COLOR_BG = palette["BG"]
+    COLOR_PANEL = palette["PANEL"]
+    COLOR_LOG_BG = palette["LOG_BG"]
+    COLOR_TEXT = palette["TEXT"]
+    COLOR_MUTED = palette["MUTED"]
+    COLOR_OK = palette["OK"]
+    COLOR_ERR = palette["ERR"]
+    COLOR_LOG_TEXT = palette["LOG_TEXT"]
+    COLOR_BTN_HOVER = palette["BTN_HOVER"]
+
+
+def _preferences_path() -> Path:
+    base = os.environ.get("APPDATA")
+    return Path(base) / "PrintWatcher" / "preferences.json" if base else Path.home() / ".printwatcher" / "preferences.json"
+
+
+def load_preferences() -> dict:
+    path = _preferences_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_preferences(prefs: dict) -> None:
+    path = _preferences_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
+    except OSError as exc:
+        log.warning("could not save preferences: %s", exc)
 
 
 class App(tk.Tk):
@@ -637,12 +715,23 @@ class App(tk.Tk):
         self._stats["printed"] = sum(1 for r in self._history.recent() if r.status == "ok")
         self._stats["errors"] = sum(1 for r in self._history.recent() if r.status == "error")
 
+        self._preferences = load_preferences()
+        self._theme_name = self._preferences.get("theme", DEFAULT_THEME)
+        if self._theme_name not in THEMES:
+            self._theme_name = DEFAULT_THEME
+        _apply_theme(self._theme_name)
+        self._tray_icon = None
+        self._sort_state: dict[str, bool] = {}     # column -> reverse?
+
         self.title("PrintWatcher")
         self.geometry("960x680")
         self.minsize(720, 560)
         self.configure(bg=COLOR_BG)
+        self._set_window_icon()
 
+        self._build_menu_bar()
         self._build_ui()
+        self._bind_keyboard_shortcuts()
         self._refresh_history()
 
         self._worker = PrinterWorker(
@@ -865,7 +954,10 @@ class App(tk.Tk):
             "color": ("Color", 80),
         }
         for col, (label, width) in headings.items():
-            self._history_tree.heading(col, text=label)
+            self._history_tree.heading(
+                col, text=label,
+                command=lambda c=col: self._sort_history_by(c),
+            )
             anchor = "e" if col == "copies" else "w"
             self._history_tree.column(col, width=width, anchor=anchor, stretch=(col == "file"))
         self._history_tree.tag_configure("ok", foreground=COLOR_OK)
@@ -899,6 +991,244 @@ class App(tk.Tk):
         self._dot.create_oval(0, 0, 18, 18, fill=color, outline=color)
         self._dot.create_oval(5, 5, 13, 13, fill=COLOR_BG, outline="")
         self._dot.create_oval(7, 7, 11, 11, fill=color, outline="")
+
+    # ---- window chrome -----------------------------------------------
+
+    def _set_window_icon(self) -> None:
+        icon_ico = Path(__file__).resolve().parent / "assets" / "printwatcher.ico"
+        icon_png = Path(__file__).resolve().parent / "assets" / "printwatcher.png"
+        try:
+            if sys.platform == "win32" and icon_ico.exists():
+                self.iconbitmap(default=str(icon_ico))
+                return
+        except tk.TclError:
+            pass
+        try:
+            if icon_png.exists():
+                self._icon_image = tk.PhotoImage(file=str(icon_png))
+                self.iconphoto(True, self._icon_image)
+        except tk.TclError:
+            pass
+
+    def _build_menu_bar(self) -> None:
+        menubar = tk.Menu(self)
+        self.configure(menu=menubar)
+
+        # File
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Open inbox\tCtrl+O",
+                              command=lambda: self._open_folder(self._watch_dir))
+        file_menu.add_command(label="Open printed",
+                              command=lambda: self._open_folder(self._printed_dir))
+        file_menu.add_command(label="Rescan now\tCtrl+R", command=self._rescan_now)
+        file_menu.add_separator()
+        file_menu.add_command(label="Hide to tray\tEsc", command=self._hide_to_tray)
+        file_menu.add_command(label="Quit\tCtrl+Q", command=self._on_close)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        # View
+        view_menu = tk.Menu(menubar, tearoff=0)
+        theme_menu = tk.Menu(view_menu, tearoff=0)
+        self._theme_var = tk.StringVar(value=self._theme_name)
+        for name in THEMES:
+            theme_menu.add_radiobutton(
+                label=name, value=name, variable=self._theme_var,
+                command=lambda n=name: self._switch_theme(n),
+            )
+        view_menu.add_cascade(label="Theme", menu=theme_menu)
+        view_menu.add_separator()
+        view_menu.add_command(label="Pause / Resume\tCtrl+P", command=self._toggle_pause)
+        view_menu.add_command(label="Focus filter\tCtrl+F",
+                              command=self._focus_filter)
+        view_menu.add_command(label="Clear log", command=self._clear_log)
+        view_menu.add_command(label="Clear history", command=self._clear_history)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        # Help
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Check for updates", command=self._check_updates)
+        help_menu.add_command(label="View logs folder",
+                              command=lambda: self._open_folder(_logs_dir()))
+        help_menu.add_separator()
+        help_menu.add_command(label="About PrintWatcher", command=self._show_about)
+        menubar.add_cascade(label="Help", menu=help_menu)
+
+    def _bind_keyboard_shortcuts(self) -> None:
+        bindings = (
+            ("<Control-p>", lambda _e: self._toggle_pause()),
+            ("<Control-P>", lambda _e: self._toggle_pause()),
+            ("<Control-r>", lambda _e: self._rescan_now()),
+            ("<Control-R>", lambda _e: self._rescan_now()),
+            ("<Control-f>", lambda _e: self._focus_filter()),
+            ("<Control-F>", lambda _e: self._focus_filter()),
+            ("<Control-o>", lambda _e: self._open_folder(self._watch_dir)),
+            ("<Control-O>", lambda _e: self._open_folder(self._watch_dir)),
+            ("<Control-q>", lambda _e: self._on_close()),
+            ("<Control-Q>", lambda _e: self._on_close()),
+            ("<F5>", lambda _e: self._refresh_history()),
+            ("<Escape>", lambda _e: self._hide_to_tray()),
+        )
+        for sequence, handler in bindings:
+            self.bind_all(sequence, handler)
+
+    def _focus_filter(self) -> None:
+        if hasattr(self, "_filter_var"):
+            for widget in self.winfo_children():
+                self._descend_focus_filter(widget)
+
+    def _descend_focus_filter(self, widget) -> bool:
+        # Hunt for the Entry tied to _filter_var.
+        try:
+            for child in widget.winfo_children():
+                if isinstance(child, ttk.Entry) and child.cget("textvariable") == str(self._filter_var):
+                    child.focus_set()
+                    child.select_range(0, "end")
+                    return True
+                if self._descend_focus_filter(child):
+                    return True
+        except tk.TclError:
+            pass
+        return False
+
+    # ---- theme switching ---------------------------------------------
+
+    def _switch_theme(self, name: str) -> None:
+        if name not in THEMES:
+            return
+        self._theme_name = name
+        _apply_theme(name)
+        self._preferences["theme"] = name
+        save_preferences(self._preferences)
+        self._log_threadsafe(f"theme changed to {name} (full reload on next launch)")
+        self._show_modal_message(
+            "Theme switched",
+            f"Theme set to {name}. Restart PrintWatcher to apply.",
+        )
+
+    def _show_modal_message(self, title: str, message: str) -> None:
+        win = tk.Toplevel(self)
+        win.title(title)
+        win.configure(bg=COLOR_BG)
+        win.transient(self)
+        win.grab_set()
+        tk.Label(
+            win, text=message, fg=COLOR_TEXT, bg=COLOR_BG,
+            font=("Segoe UI", 10), padx=24, pady=18, wraplength=380, justify="left",
+        ).pack()
+        ttk.Button(win, text="OK", style="Action.TButton", command=win.destroy).pack(pady=(0, 12))
+        win.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - win.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{x}+{y}")
+
+    # ---- About ---------------------------------------------------------
+
+    def _show_about(self) -> None:
+        win = tk.Toplevel(self)
+        win.title("About PrintWatcher")
+        win.configure(bg=COLOR_BG)
+        win.transient(self)
+        win.grab_set()
+        win.resizable(False, False)
+
+        body = tk.Frame(win, bg=COLOR_BG, padx=28, pady=22)
+        body.pack()
+        tk.Label(body, text="PrintWatcher", fg=COLOR_TEXT, bg=COLOR_BG,
+                 font=("Segoe UI Semibold", 16)).pack(anchor="w")
+        tk.Label(body, text=f"Version {APP_VERSION}", fg=COLOR_MUTED, bg=COLOR_BG,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 12))
+        tk.Label(
+            body,
+            text=(
+                "Auto-print files dropped into a OneDrive folder.\n"
+                "MIT licensed, no telemetry by default.\n\n"
+                f"Inbox: {self._watch_dir}\n"
+                f"Sumatra: {self._sumatra}\n"
+                f"History: {self._history._path}\n"
+                f"Logs: {_logs_dir()}"
+            ),
+            fg=COLOR_TEXT, bg=COLOR_BG, font=("Consolas", 9),
+            justify="left",
+        ).pack(anchor="w")
+        tk.Label(
+            body, text="https://github.com/josephkehan-prog/PrintWatcher",
+            fg=COLOR_OK, bg=COLOR_BG, font=("Segoe UI", 9), cursor="hand2",
+        ).pack(anchor="w", pady=(12, 0))
+
+        btn_row = tk.Frame(body, bg=COLOR_BG)
+        btn_row.pack(anchor="w", pady=(16, 0))
+        ttk.Button(btn_row, text="Close", style="Action.TButton",
+                   command=win.destroy).pack()
+
+    # ---- self-update check --------------------------------------------
+
+    def _check_updates(self) -> None:
+        threading.Thread(target=self._check_updates_async, daemon=True).start()
+
+    def _check_updates_async(self) -> None:
+        import urllib.error
+        import urllib.request
+
+        url = "https://api.github.com/repos/josephkehan-prog/PrintWatcher/releases/latest"
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            self._log_threadsafe(f"update check failed: {exc}")
+            return
+        latest = (payload.get("tag_name") or "").lstrip("v")
+        if not latest:
+            self._log_threadsafe("update check: no releases found yet")
+            return
+        if latest == APP_VERSION:
+            self.after(0, self._show_modal_message, "Up to date",
+                       f"You're on the latest version (v{APP_VERSION}).")
+            return
+        url_html = payload.get("html_url") or "https://github.com/josephkehan-prog/PrintWatcher/releases"
+        self.after(
+            0, self._show_modal_message, "Update available",
+            f"v{latest} is available (you're on v{APP_VERSION}).\n\nDownload: {url_html}",
+        )
+
+    # ---- tray icon -----------------------------------------------------
+
+    def _hide_to_tray(self) -> None:
+        if self._tray_icon is None:
+            self._build_tray_icon()
+        if self._tray_icon is not None:
+            try:
+                self.withdraw()
+            except tk.TclError:
+                pass
+
+    def _show_from_tray(self) -> None:
+        try:
+            self.deiconify()
+            self.lift()
+            self.focus_force()
+        except tk.TclError:
+            pass
+
+    def _build_tray_icon(self) -> None:
+        try:
+            import pystray
+            from PIL import Image
+        except ImportError:
+            self._log_threadsafe("pystray/Pillow not available; cannot hide to tray")
+            return
+        icon_png = Path(__file__).resolve().parent / "assets" / "printwatcher.png"
+        if icon_png.exists():
+            image = Image.open(icon_png)
+        else:
+            image = Image.new("RGB", (64, 64), COLOR_OK)
+        menu = pystray.Menu(
+            pystray.MenuItem("Show window", lambda _i, _it: self.after(0, self._show_from_tray), default=True),
+            pystray.MenuItem("Pause / Resume",
+                             lambda _i, _it: self.after(0, self._toggle_pause)),
+            pystray.MenuItem("Quit", lambda _i, _it: self.after(0, self._on_close)),
+        )
+        self._tray_icon = pystray.Icon("PrintWatcher", image, "PrintWatcher", menu)
+        threading.Thread(target=self._tray_icon.run, daemon=True, name="TrayIcon").start()
 
     # ---- print options panel -----------------------------------------
 
@@ -1029,7 +1359,73 @@ class App(tk.Tk):
                 self._observer.stop()
             except Exception:
                 log.exception("observer stop failed")
+        if self._tray_icon is not None:
+            try:
+                self._tray_icon.stop()
+            except Exception:
+                log.exception("tray icon stop failed")
         self.destroy()
+
+    def _sort_history_by(self, column: str) -> None:
+        reverse = self._sort_state.get(column, False)
+        self._sort_state[column] = not reverse
+
+        def key_for(record):
+            value = getattr(record, column, "")
+            if column == "time":
+                value = record.timestamp
+            elif column == "copies":
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    value = 0
+            elif isinstance(value, str):
+                value = value.lower()
+            return value
+
+        records = sorted(self._history.recent(), key=key_for, reverse=reverse)
+        # rewrite tree from this ordering, applying current filter
+        self._render_history(records)
+        # arrow indicator on the heading
+        for col in ("time", "submitter", "file", "status", "printer", "copies", "sides", "color"):
+            label = self._history_tree.heading(col)["text"].rstrip(" ▲▼")
+            if col == column:
+                label = f"{label} {'▼' if reverse else '▲'}"
+            self._history_tree.heading(col, text=label)
+
+    def _render_history(self, records) -> None:
+        filter_text = (
+            self._filter_var.get().strip().lower()
+            if hasattr(self, "_filter_var") else ""
+        )
+        for iid in self._history_tree.get_children():
+            self._history_tree.delete(iid)
+        self._history_row_records = {}
+        for record in records:
+            if filter_text:
+                haystack = " ".join((
+                    record.filename, record.submitter,
+                    record.printer, record.status, record.detail,
+                )).lower()
+                if filter_text not in haystack:
+                    continue
+            status_glyph = "OK" if record.status == "ok" else "FAIL"
+            tag = "ok" if record.status == "ok" else "error"
+            iid = self._history_tree.insert(
+                "", "end",
+                values=(
+                    record.time_short,
+                    record.submitter or "—",
+                    record.filename,
+                    status_glyph,
+                    record.printer,
+                    record.copies,
+                    record.sides,
+                    record.color,
+                ),
+                tags=(tag,),
+            )
+            self._history_row_records[iid] = record
 
     # ---- actions ------------------------------------------------------
 
@@ -1080,41 +1476,7 @@ class App(tk.Tk):
     def _refresh_history(self) -> None:
         if not hasattr(self, "_history_tree"):
             return
-        filter_text = (
-            self._filter_var.get().strip().lower()
-            if hasattr(self, "_filter_var") else ""
-        )
-        for iid in self._history_tree.get_children():
-            self._history_tree.delete(iid)
-        self._history_row_records: dict[str, PrintRecord] = {}
-        for record in self._history.recent():
-            if filter_text:
-                haystack = " ".join((
-                    record.filename,
-                    record.submitter,
-                    record.printer,
-                    record.status,
-                    record.detail,
-                )).lower()
-                if filter_text not in haystack:
-                    continue
-            status_glyph = "OK" if record.status == "ok" else "FAIL"
-            tag = "ok" if record.status == "ok" else "error"
-            iid = self._history_tree.insert(
-                "", "end",
-                values=(
-                    record.time_short,
-                    record.submitter or "—",
-                    record.filename,
-                    status_glyph,
-                    record.printer,
-                    record.copies,
-                    record.sides,
-                    record.color,
-                ),
-                tags=(tag,),
-            )
-            self._history_row_records[iid] = record
+        self._render_history(self._history.recent())
 
     # ---- history row interactions ------------------------------------
 
