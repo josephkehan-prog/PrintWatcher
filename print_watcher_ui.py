@@ -1277,8 +1277,61 @@ class App(tk.Tk):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _configure_logging() -> Path | None:
+    """Console + rotating file handler in %APPDATA%/PrintWatcher/logs/."""
+    from logging.handlers import RotatingFileHandler
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers.clear()
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    console = logging.StreamHandler()
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    appdata = os.environ.get("APPDATA")
+    log_dir = Path(appdata) / "PrintWatcher" / "logs" if appdata else Path.home() / ".printwatcher" / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            log_dir / "printwatcher.log",
+            maxBytes=2_000_000,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+        return log_dir
+    except OSError:
+        return None
+
+
+def _maybe_init_sentry() -> bool:
+    """Init Sentry if SENTRY_DSN is set and the SDK is installed; opt-in."""
+    dsn = os.environ.get("SENTRY_DSN")
+    if not dsn:
+        return False
+    try:
+        import sentry_sdk  # type: ignore[import-not-found]
+    except ImportError:
+        log.info("SENTRY_DSN set but sentry-sdk not installed; skipping")
+        return False
+    sentry_sdk.init(
+        dsn=dsn,
+        traces_sample_rate=0.0,
+        send_default_pii=False,
+    )
+    log.info("sentry initialised")
+    return True
+
+
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    log_dir = _configure_logging()
+    if log_dir:
+        log.info("logging to %s", log_dir)
+    _maybe_init_sentry()
     watch_dir, sumatra = discover_paths()
     App(watch_dir=watch_dir, sumatra=sumatra).mainloop()
 
