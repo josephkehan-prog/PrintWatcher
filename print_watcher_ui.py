@@ -183,20 +183,8 @@ FILENAME_OPTIONS_SEPARATOR = "__"
 FILENAME_TOKEN_SPLIT = re.compile(r"[,_\s]+")
 
 
-def parse_filename_options(filename: str, base: "PrintOptions") -> tuple["PrintOptions", list[str]]:
-    """Overlay options encoded in the filename suffix `__copies=3_duplex_color`.
-
-    Returns (merged options, list of human-readable tokens that were applied).
-    Unrecognised tokens are silently ignored. The original filename is *not*
-    rewritten — `_printed/` archives keep whatever was dropped.
-    """
-    stem = Path(filename).stem
-    if FILENAME_OPTIONS_SEPARATOR not in stem:
-        return base, []
-    name_part, _, opt_str = stem.rpartition(FILENAME_OPTIONS_SEPARATOR)
-    if not name_part:
-        return base, []
-
+def _apply_option_tokens(opt_str: str, base: "PrintOptions") -> tuple["PrintOptions", list[str]]:
+    """Parse a `copies=3_duplex_color`-style token list into an option overlay."""
     merged = base
     applied: list[str] = []
     for raw in FILENAME_TOKEN_SPLIT.split(opt_str.lower()):
@@ -214,7 +202,6 @@ def parse_filename_options(filename: str, base: "PrintOptions") -> tuple["PrintO
                 applied.append(f"copies={count}")
             # Printer choice intentionally not supported via filename — names
             # often contain spaces, which collide with the token separator.
-            # Set printer once in the desktop UI dropdown instead.
             continue
         if token in {"duplex", "duplexlong", "long"}:
             merged = replace(merged, sides="duplex")
@@ -234,6 +221,66 @@ def parse_filename_options(filename: str, base: "PrintOptions") -> tuple["PrintO
     return merged, applied
 
 
+def split_label(label: str) -> tuple[str, str]:
+    """Split `<name>__<options>` into (name, opt_str). Either may be empty."""
+    if FILENAME_OPTIONS_SEPARATOR not in label:
+        return label, ""
+    name_part, _, opt_str = label.rpartition(FILENAME_OPTIONS_SEPARATOR)
+    return name_part, opt_str
+
+
+def parse_filename_options(filename: str, base: "PrintOptions") -> tuple["PrintOptions", list[str]]:
+    """Overlay options encoded in the filename suffix `__copies=3_duplex_color`."""
+    stem = Path(filename).stem
+    name_part, opt_str = split_label(stem)
+    if not opt_str or not name_part:
+        return base, []
+    return _apply_option_tokens(opt_str, base)
+
+
+def resolve_path_options(
+    path: Path,
+    watch_dir: Path,
+    base: "PrintOptions",
+) -> tuple["PrintOptions", list[str], str]:
+    """Walk every path component under watch_dir and accumulate option overlays.
+
+    Returns (merged_options, applied_tokens, submitter). The first folder
+    component's name (with any `__opts` suffix stripped) determines the
+    submitter. Folder option overlays apply in path order; the filename
+    overlay applies last and wins on conflicts.
+    """
+    try:
+        relative = path.relative_to(watch_dir)
+    except ValueError:
+        return base, [], _local_user()
+    parts = relative.parts
+    if not parts:
+        return base, [], _local_user()
+
+    options = base
+    applied: list[str] = []
+    submitter = _local_user()
+
+    # Folder components (everything but the trailing filename)
+    for index, part in enumerate(parts[:-1]):
+        name_part, opt_str = split_label(part)
+        if index == 0 and name_part:
+            submitter = name_part
+        if opt_str:
+            options, tokens = _apply_option_tokens(opt_str, options)
+            applied.extend(tokens)
+
+    # Filename suffix overlay (highest priority)
+    filename_stem = Path(parts[-1]).stem
+    name_part, opt_str = split_label(filename_stem)
+    if opt_str and name_part:
+        options, tokens = _apply_option_tokens(opt_str, options)
+        applied.extend(tokens)
+
+    return options, applied, submitter
+
+
 def _local_user() -> str:
     return (
         os.environ.get("USERNAME")
@@ -243,14 +290,20 @@ def _local_user() -> str:
 
 
 def _submitter_for(path: Path, watch_dir: Path) -> str:
-    """Multi-user attribution: subfolder name when present, else current OS user."""
+    """Multi-user attribution: subfolder name when present, else current OS user.
+
+    The first folder component's `__opts` suffix is stripped so submitter
+    matches even when the folder also encodes per-job options.
+    """
     try:
         relative = path.relative_to(watch_dir)
     except ValueError:
         return _local_user()
     if len(relative.parts) <= 1:
         return _local_user()
-    return relative.parts[0]
+    head = relative.parts[0]
+    name_part, _ = split_label(head)
+    return name_part or _local_user()
 
 
 def _sides_label(value: str | None) -> str:
@@ -422,7 +475,9 @@ class PrinterWorker(threading.Thread):
             return
 
         ui_options = self._options_provider()
-        options, filename_tokens = parse_filename_options(path.name, ui_options)
+        options, applied_tokens, _resolved_submitter = resolve_path_options(
+            path, self._watch_dir, ui_options,
+        )
         printer_label = options.printer or DEFAULT_PRINTER_LABEL
         details = [f"to {printer_label}"]
         if options.copies > 1:
@@ -431,8 +486,8 @@ class PrinterWorker(threading.Thread):
             details.append(_sides_label(options.sides))
         if options.color:
             details.append(_color_label(options.color))
-        if filename_tokens:
-            details.append(f"filename overrides: {', '.join(filename_tokens)}")
+        if applied_tokens:
+            details.append(f"path overrides: {', '.join(applied_tokens)}")
         self._log(f"printing: {path.name} ({', '.join(details)})")
 
         try:
