@@ -961,8 +961,11 @@ class App(tk.Tk):
             fg=COLOR_MUTED, bg=COLOR_PANEL, font=("Segoe UI", 8, "italic"),
         ).pack(side="right", padx=(8, 0))
 
-        tree_inner = tk.Frame(history, bg=COLOR_PANEL, padx=2, pady=2)
-        tree_inner.pack(fill="both", expand=True)
+        history_split = tk.Frame(history, bg=COLOR_PANEL)
+        history_split.pack(fill="both", expand=True)
+
+        tree_inner = tk.Frame(history_split, bg=COLOR_PANEL, padx=2, pady=2)
+        tree_inner.pack(side="left", fill="both", expand=True)
         columns = ("time", "submitter", "file", "status", "printer", "copies", "sides", "color")
         self._history_tree = ttk.Treeview(
             tree_inner, columns=columns, show="headings", style="App.Treeview",
@@ -991,7 +994,11 @@ class App(tk.Tk):
         tree_scroll.pack(side="right", fill="y")
         self._history_tree.configure(yscrollcommand=tree_scroll.set)
 
+        # Preview panel (right side of the History tab)
+        self._build_history_preview_panel(history_split)
+
         self._build_history_context_menu()
+        self._history_tree.bind("<<TreeviewSelect>>", self._on_history_selection_change)
 
         # Pending tab (hold-and-release queue)
         pending = tk.Frame(notebook, bg=COLOR_PANEL)
@@ -1739,6 +1746,170 @@ class App(tk.Tk):
                 subprocess.Popen(["xdg-open", str(path.parent)])
         except OSError as exc:
             self._log_threadsafe(f"reveal failed: {exc}")
+
+    # ---- history preview panel ---------------------------------------
+
+    PREVIEW_WIDTH = 280
+    PREVIEW_IMAGE_BOX = (240, 320)
+    THUMBNAIL_CACHE_LIMIT = 50
+
+    def _build_history_preview_panel(self, parent: tk.Frame) -> None:
+        panel = tk.Frame(parent, bg=COLOR_PANEL, width=self.PREVIEW_WIDTH, padx=12, pady=10)
+        panel.pack(side="right", fill="y", padx=(8, 0))
+        panel.pack_propagate(False)
+
+        tk.Label(
+            panel, text="PREVIEW", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 8, "bold"),
+        ).pack(anchor="w")
+
+        self._preview_image_label = tk.Label(
+            panel, bg=COLOR_LOG_BG, fg=COLOR_MUTED,
+            text="(select a row)", font=("Segoe UI", 9, "italic"),
+            width=self.PREVIEW_IMAGE_BOX[0], height=self.PREVIEW_IMAGE_BOX[1],
+        )
+        # width/height on a Label without an image are character units, so
+        # force pixel sizing via place inside a fixed-height frame
+        wrap = tk.Frame(
+            panel, bg=COLOR_LOG_BG,
+            width=self.PREVIEW_IMAGE_BOX[0], height=self.PREVIEW_IMAGE_BOX[1],
+        )
+        wrap.pack(pady=(8, 8))
+        wrap.pack_propagate(False)
+        self._preview_image_label = tk.Label(
+            wrap, bg=COLOR_LOG_BG, fg=COLOR_MUTED,
+            text="(select a row)", font=("Segoe UI", 9, "italic"),
+        )
+        self._preview_image_label.pack(expand=True, fill="both")
+
+        self._preview_filename_label = tk.Label(
+            panel, text="—", fg=COLOR_TEXT, bg=COLOR_PANEL,
+            font=("Segoe UI Semibold", 10), wraplength=self.PREVIEW_WIDTH - 32,
+            justify="left", anchor="w",
+        )
+        self._preview_filename_label.pack(anchor="w", fill="x")
+
+        self._preview_meta_label = tk.Label(
+            panel, text="", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 9), wraplength=self.PREVIEW_WIDTH - 32,
+            justify="left", anchor="w",
+        )
+        self._preview_meta_label.pack(anchor="w", fill="x", pady=(4, 0))
+
+        self._thumbnail_cache: dict[Path, tuple[float, object]] = {}
+        self._preview_render_token = 0  # invalidates stale background renders
+
+    def _on_history_selection_change(self, _event: object = None) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            self._set_preview_status("(select a row)")
+            self._preview_filename_label.configure(text="—")
+            self._preview_meta_label.configure(text="")
+            return
+        self._preview_filename_label.configure(text=record.filename)
+        self._preview_meta_label.configure(text=self._format_preview_meta(record))
+
+        source = self._find_printed_file(record)
+        if source is None:
+            self._set_preview_status("file no longer in _printed/")
+            return
+
+        try:
+            mtime = source.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        cached = self._thumbnail_cache.get(source)
+        if cached and abs(cached[0] - mtime) < 0.1:
+            self._set_preview_image(cached[1])
+            return
+
+        self._set_preview_status("rendering preview…")
+        self._preview_render_token += 1
+        token = self._preview_render_token
+        threading.Thread(
+            target=self._render_preview_async,
+            args=(source, mtime, token),
+            daemon=True,
+            name="PreviewRender",
+        ).start()
+
+    def _format_preview_meta(self, record: PrintRecord) -> str:
+        parts = [
+            f"{record.submitter or 'local'} · {record.printer}",
+            f"{record.copies} copies · {record.sides} · {record.color}",
+            f"{record.time_short} · {record.status.upper()}",
+        ]
+        if record.detail:
+            parts.append(record.detail)
+        return "\n".join(parts)
+
+    def _render_preview_async(self, path: Path, mtime: float, token: int) -> None:
+        try:
+            pil_image = self._render_pil(path)
+        except Exception as exc:
+            self.after(0, self._maybe_set_preview_status, token, f"preview failed: {exc}")
+            return
+        if pil_image is None:
+            self.after(
+                0, self._maybe_set_preview_status, token,
+                "preview unavailable\n(install pypdfium2 for PDF previews)",
+            )
+            return
+        self.after(0, self._build_and_show_preview, path, mtime, pil_image, token)
+
+    def _render_pil(self, path: Path):
+        suffix = path.suffix.lower()
+        if suffix in (".png", ".jpg", ".jpeg"):
+            from PIL import Image
+            with Image.open(path) as img:
+                img = img.convert("RGB")
+                img.thumbnail(self.PREVIEW_IMAGE_BOX)
+                return img.copy()
+        if suffix == ".pdf":
+            try:
+                import pypdfium2 as pdfium  # type: ignore[import-not-found]
+            except ImportError:
+                return None
+            try:
+                pdf = pdfium.PdfDocument(str(path))
+            except Exception:
+                return None
+            if len(pdf) == 0:
+                return None
+            page = pdf[0]
+            bitmap = page.render(scale=2.0).to_pil().convert("RGB")
+            bitmap.thumbnail(self.PREVIEW_IMAGE_BOX)
+            return bitmap
+        return None
+
+    def _build_and_show_preview(self, path: Path, mtime: float, pil_image, token: int) -> None:
+        if token != self._preview_render_token:
+            return  # selection changed since this render started
+        from PIL import ImageTk
+        photo = ImageTk.PhotoImage(pil_image)
+        self._thumbnail_cache[path] = (mtime, photo)
+        if len(self._thumbnail_cache) > self.THUMBNAIL_CACHE_LIMIT:
+            oldest = sorted(
+                self._thumbnail_cache.items(),
+                key=lambda kv: kv[1][0],
+            )[: len(self._thumbnail_cache) - self.THUMBNAIL_CACHE_LIMIT]
+            for stale_path, _ in oldest:
+                self._thumbnail_cache.pop(stale_path, None)
+        self._set_preview_image(photo)
+
+    def _set_preview_image(self, photo) -> None:
+        self._preview_image_label.configure(image=photo, text="")
+        # Hold a reference on the widget so the PhotoImage isn't gc'd
+        self._preview_image_label.image = photo
+
+    def _maybe_set_preview_status(self, token: int, message: str) -> None:
+        if token != self._preview_render_token:
+            return
+        self._set_preview_status(message)
+
+    def _set_preview_status(self, message: str) -> None:
+        self._preview_image_label.configure(image="", text=message, fg=COLOR_MUTED)
+        self._preview_image_label.image = None
 
     def _build_history_context_menu(self) -> None:
         menu = tk.Menu(
