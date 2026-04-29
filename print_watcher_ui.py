@@ -179,6 +179,61 @@ def default_history_path() -> Path:
     return Path.home() / ".printwatcher" / "history.json"
 
 
+FILENAME_OPTIONS_SEPARATOR = "__"
+FILENAME_TOKEN_SPLIT = re.compile(r"[,_\s]+")
+
+
+def parse_filename_options(filename: str, base: "PrintOptions") -> tuple["PrintOptions", list[str]]:
+    """Overlay options encoded in the filename suffix `__copies=3_duplex_color`.
+
+    Returns (merged options, list of human-readable tokens that were applied).
+    Unrecognised tokens are silently ignored. The original filename is *not*
+    rewritten — `_printed/` archives keep whatever was dropped.
+    """
+    stem = Path(filename).stem
+    if FILENAME_OPTIONS_SEPARATOR not in stem:
+        return base, []
+    name_part, _, opt_str = stem.rpartition(FILENAME_OPTIONS_SEPARATOR)
+    if not name_part:
+        return base, []
+
+    merged = base
+    applied: list[str] = []
+    for raw in FILENAME_TOKEN_SPLIT.split(opt_str.lower()):
+        token = raw.strip()
+        if not token:
+            continue
+        if "=" in token:
+            key, _, value = token.partition("=")
+            if key in ("copies", "n", "x"):
+                try:
+                    count = max(1, min(99, int(value)))
+                except ValueError:
+                    continue
+                merged = replace(merged, copies=count)
+                applied.append(f"copies={count}")
+            # Printer choice intentionally not supported via filename — names
+            # often contain spaces, which collide with the token separator.
+            # Set printer once in the desktop UI dropdown instead.
+            continue
+        if token in {"duplex", "duplexlong", "long"}:
+            merged = replace(merged, sides="duplex")
+            applied.append("duplex")
+        elif token in {"duplexshort", "short"}:
+            merged = replace(merged, sides="duplexshort")
+            applied.append("duplex (short)")
+        elif token in {"simplex", "single"}:
+            merged = replace(merged, sides="simplex")
+            applied.append("single-sided")
+        elif token in {"color", "colour"}:
+            merged = replace(merged, color="color")
+            applied.append("color")
+        elif token in {"mono", "monochrome", "bw"}:
+            merged = replace(merged, color="monochrome")
+            applied.append("mono")
+    return merged, applied
+
+
 def _local_user() -> str:
     return (
         os.environ.get("USERNAME")
@@ -366,7 +421,8 @@ class PrinterWorker(threading.Thread):
             self._record(path, "error", "never stabilised", self._options_provider())
             return
 
-        options = self._options_provider()
+        ui_options = self._options_provider()
+        options, filename_tokens = parse_filename_options(path.name, ui_options)
         printer_label = options.printer or DEFAULT_PRINTER_LABEL
         details = [f"to {printer_label}"]
         if options.copies > 1:
@@ -375,6 +431,8 @@ class PrinterWorker(threading.Thread):
             details.append(_sides_label(options.sides))
         if options.color:
             details.append(_color_label(options.color))
+        if filename_tokens:
+            details.append(f"filename overrides: {', '.join(filename_tokens)}")
         self._log(f"printing: {path.name} ({', '.join(details)})")
 
         try:

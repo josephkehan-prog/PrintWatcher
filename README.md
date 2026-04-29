@@ -104,6 +104,55 @@ Outputs PASS / WARN / FAIL for: Python version, MS Store Python alias detection,
 
 `--json` emits machine-readable output if you want to wire it into a setup pipeline.
 
+## Per-job options from the iPad (filename conventions)
+
+The desktop UI's "Print options" panel applies to every job until you change it. That's clunky from the iPad where you don't have the panel — so PrintWatcher also reads options encoded **in the filename** before printing. From iPad it's just:
+
+1. Share PDF → **Save to Files**
+2. Tap **Edit** to rename, append `__copies=30_duplex` (or whatever) before the `.pdf`
+3. Save into `OneDrive\PrintInbox\` (or your subfolder)
+
+Filename grammar — `__` separates the document name from the options block; tokens are separated by `_`, `,`, or whitespace:
+
+```
+worksheet__copies=30.pdf                 -> 30 copies, otherwise UI defaults
+report__duplex_mono.pdf                  -> duplex (long edge), monochrome
+quiz__copies=12_duplex_color.pdf         -> 12 copies, duplex, color
+notes.pdf                                -> uses whatever the desktop UI is set to
+MaryDoe/quiz__copies=12_duplex.pdf       -> attributed to MaryDoe + per-job options
+```
+
+Recognised tokens:
+
+| Token | Effect |
+|---|---|
+| `copies=N` (or `n=N`, `x=N`), 1-99 | number of copies |
+| `duplex`, `duplexlong`, `long` | duplex (long edge) |
+| `duplexshort`, `short` | duplex (short edge) |
+| `simplex`, `single` | force single-sided |
+| `color`, `colour` | color print |
+| `mono`, `monochrome`, `bw` | monochrome |
+
+Out-of-range or unrecognised tokens are ignored. The original filename is **not** rewritten — `_printed/` archives keep whatever you dropped, and the History tab shows the merged options that were actually applied.
+
+Printer choice can't be encoded in filenames (printer names usually contain spaces, which collide with the token separator). Set the printer once in the desktop UI dropdown.
+
+### iPad Shortcut to make it one-tap
+
+Apple Shortcuts (built-in iPad app) can prompt for options and rename automatically. Rough recipe:
+
+1. **Shortcuts → New shortcut → Receive PDFs from Share Sheet**
+2. **Ask for Number** ("How many copies?") → magic variable `Copies`
+3. **Choose from Menu** ("Sides?") → Single / Duplex (long) / Duplex (short) → magic variable `Sides`
+4. **Choose from Menu** ("Color?") → Color / Mono / Default → magic variable `Color`
+5. **Text** action that builds the suffix:
+   `__copies=[Copies]_[Sides]_[Color]`
+   (omit empty bits — Shortcuts has an If for that)
+6. **Get Name of File** → append the suffix → **Set Name**
+7. **Save File** to `iCloud Drive` shortcut, target `OneDrive\PrintInbox`
+
+Now the iPad share sheet has "Print via PrintWatcher" as one tap → quick prompts → done.
+
 ## Companion scripts
 
 Each is standalone and discovers your `PrintInbox` automatically by reading the same path that `bootstrap.ps1` patched into `print_watcher_tray.py`.
