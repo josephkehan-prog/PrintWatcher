@@ -314,14 +314,59 @@ def cmd_add(args: argparse.Namespace) -> int:
 
 def cmd_remove(args: argparse.Namespace) -> int:
     path = class_path(args.classname)
-    header, rows = read_roster(path)
-    name = args.name.strip()
-    survivors = [r for r in rows if r["name"].strip().lower() != name.lower()]
-    if len(survivors) == len(rows):
-        log.warning("%s not found on %s", name, args.classname)
+    if not path.exists():
+        log.error("no roster for %s", args.classname)
         return 1
-    write_roster(path, header, survivors)
-    log.info("removed %s from %s (%d remain)", name, args.classname, len(survivors))
+    header, rows = read_roster(path)
+    removed_total = 0
+    for needle in args.names:
+        token = needle.strip().lower()
+        if not token:
+            continue
+        matches = [r for r in rows if token in r.get("name", "").strip().lower()]
+        if not matches:
+            log.warning("no scholar matching %r", needle)
+            continue
+        if len(matches) > 1 and not args.all:
+            log.error(
+                "%r matches %d scholars; pass --all to remove all of them, "
+                "or use a more specific substring:",
+                needle, len(matches),
+            )
+            for m in matches:
+                log.error("    %s", m["name"])
+            continue
+        for match in matches:
+            rows.remove(match)
+            removed_total += 1
+            log.info("removed %s", match["name"])
+    write_roster(path, header, rows)
+    log.info("done: %d removed, %d remain on %s",
+             removed_total, len(rows), args.classname)
+    return 0
+
+
+def cmd_strip_metadata(args: argparse.Namespace) -> int:
+    """Keep only the name / first / last columns; drop scores, IDs, flags, etc."""
+    path = class_path(args.classname)
+    if not path.exists():
+        log.error("no roster for %s", args.classname)
+        return 1
+    header, rows = read_roster(path)
+    keep = [c for c in ("name", "first", "last") if c in header]
+    if not keep:
+        keep = ["name"]
+    new_rows = [
+        {col: row.get(col, "").strip() for col in keep}
+        for row in rows
+        if row.get("name", "").strip()
+    ]
+    dropped = [c for c in header if c not in keep]
+    write_roster(path, keep, new_rows)
+    log.info("kept columns: %s", ", ".join(keep))
+    if dropped:
+        log.info("dropped %d column(s): %s", len(dropped), ", ".join(dropped))
+    log.info("%s now has %d scholar(s)", args.classname, len(new_rows))
     return 0
 
 
@@ -885,10 +930,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name")
     p.set_defaults(func=cmd_add)
 
-    p = sub.add_parser("remove", help="remove a scholar")
+    p = sub.add_parser(
+        "remove",
+        help="remove one or more scholars (substring match, case-insensitive)",
+    )
     p.add_argument("classname")
-    p.add_argument("name")
+    p.add_argument("names", nargs="+",
+                   help="any substring of the full name; pass several to bulk-remove")
+    p.add_argument("--all", action="store_true",
+                   help="if a substring matches multiple scholars, remove every match")
     p.set_defaults(func=cmd_remove)
+
+    p = sub.add_parser(
+        "strip-metadata",
+        help="keep only first/last/name columns; drop scores, IEP, ELL, IDs, etc.",
+    )
+    p.add_argument("classname")
+    p.set_defaults(func=cmd_strip_metadata)
 
     p = sub.add_parser("rename", help="rename a scholar")
     p.add_argument("classname")
