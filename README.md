@@ -88,6 +88,7 @@ What it does differently from the tray version:
 - **Persistent print history** — every job (success or failure) is recorded in a sortable table with time, submitter, file, status, printer, and the options that were applied. Stored in `%APPDATA%\PrintWatcher\history.json` and survives restarts (last 200 entries).
 - **Multi-user submitter tracking** — files dropped into the inbox root attribute to the current Windows user. Files dropped into a subfolder (`PrintInbox\MaryDoe\report.pdf`) attribute to that subfolder name. The History tab shows the submitter column, and printed files move into matching `_printed\<submitter>\` subfolders. Useful when several staff share a OneDrive inbox.
 - **Tabbed Activity / History view** — switch between the live log and the historical table without leaving the window
+- **Interactive history** — live filter box, right-click any row for **Reprint** (copies the archived file back into the inbox), **Open file**, **Show in folder**, **Filter to this submitter / printer**, **Copy filename**. Double-click a row to open the file.
 - **Manual rescan button** — re-checks the inbox immediately
 - **`on_moved` handler** — catches files OneDrive delivers via temp-file rename (which `on_created` misses)
 - **5-second polling fallback** — picks up anything the OS event stream drops, walking subfolders too

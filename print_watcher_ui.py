@@ -24,6 +24,7 @@ import logging
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -830,6 +831,23 @@ class App(tk.Tk):
         # History tab
         history = tk.Frame(notebook, bg=COLOR_PANEL)
         notebook.add(history, text="History")
+
+        filter_bar = tk.Frame(history, bg=COLOR_PANEL, padx=10, pady=8)
+        filter_bar.pack(fill="x")
+        tk.Label(
+            filter_bar, text="Filter", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 9),
+        ).pack(side="left", padx=(0, 8))
+        self._filter_var = tk.StringVar()
+        self._filter_var.trace_add("write", lambda *_: self._refresh_history())
+        ttk.Entry(filter_bar, textvariable=self._filter_var).pack(
+            side="left", fill="x", expand=True,
+        )
+        tk.Label(
+            filter_bar, text="right-click a row for actions",
+            fg=COLOR_MUTED, bg=COLOR_PANEL, font=("Segoe UI", 8, "italic"),
+        ).pack(side="right", padx=(8, 0))
+
         tree_inner = tk.Frame(history, bg=COLOR_PANEL, padx=2, pady=2)
         tree_inner.pack(fill="both", expand=True)
         columns = ("time", "submitter", "file", "status", "printer", "copies", "sides", "color")
@@ -856,6 +874,8 @@ class App(tk.Tk):
         tree_scroll = ttk.Scrollbar(tree_inner, orient="vertical", command=self._history_tree.yview)
         tree_scroll.pack(side="right", fill="y")
         self._history_tree.configure(yscrollcommand=tree_scroll.set)
+
+        self._build_history_context_menu()
 
     def _build_action_bar(self) -> None:
         bar = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
@@ -1060,12 +1080,27 @@ class App(tk.Tk):
     def _refresh_history(self) -> None:
         if not hasattr(self, "_history_tree"):
             return
+        filter_text = (
+            self._filter_var.get().strip().lower()
+            if hasattr(self, "_filter_var") else ""
+        )
         for iid in self._history_tree.get_children():
             self._history_tree.delete(iid)
+        self._history_row_records: dict[str, PrintRecord] = {}
         for record in self._history.recent():
+            if filter_text:
+                haystack = " ".join((
+                    record.filename,
+                    record.submitter,
+                    record.printer,
+                    record.status,
+                    record.detail,
+                )).lower()
+                if filter_text not in haystack:
+                    continue
             status_glyph = "OK" if record.status == "ok" else "FAIL"
             tag = "ok" if record.status == "ok" else "error"
-            self._history_tree.insert(
+            iid = self._history_tree.insert(
                 "", "end",
                 values=(
                     record.time_short,
@@ -1079,6 +1114,137 @@ class App(tk.Tk):
                 ),
                 tags=(tag,),
             )
+            self._history_row_records[iid] = record
+
+    # ---- history row interactions ------------------------------------
+
+    def _build_history_context_menu(self) -> None:
+        menu = tk.Menu(
+            self, tearoff=0, bg=COLOR_PANEL, fg=COLOR_TEXT,
+            activebackground=COLOR_BTN_HOVER, activeforeground=COLOR_TEXT,
+            bd=0,
+        )
+        menu.add_command(label="Reprint", command=self._reprint_selected)
+        menu.add_command(label="Open file", command=self._open_selected_file)
+        menu.add_command(label="Show in folder", command=self._show_selected_in_folder)
+        menu.add_separator()
+        menu.add_command(label="Filter to this submitter",
+                         command=lambda: self._filter_to_field("submitter"))
+        menu.add_command(label="Filter to this printer",
+                         command=lambda: self._filter_to_field("printer"))
+        menu.add_separator()
+        menu.add_command(label="Copy filename", command=self._copy_selected_filename)
+        self._history_menu = menu
+        self._history_tree.bind("<Button-3>", self._on_history_right_click)
+        self._history_tree.bind("<Double-Button-1>", lambda _e: self._open_selected_file())
+
+    def _on_history_right_click(self, event) -> None:
+        iid = self._history_tree.identify_row(event.y)
+        if iid:
+            self._history_tree.selection_set(iid)
+            self._history_tree.focus(iid)
+            try:
+                self._history_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                self._history_menu.grab_release()
+
+    def _selected_history_record(self) -> PrintRecord | None:
+        sel = self._history_tree.selection()
+        if not sel:
+            return None
+        return getattr(self, "_history_row_records", {}).get(sel[0])
+
+    def _find_printed_file(self, record: PrintRecord) -> Path | None:
+        candidates: list[Path] = []
+        if record.submitter:
+            sub_dir = self._printed_dir / record.submitter
+            if sub_dir.exists():
+                candidates.extend(sub_dir.iterdir())
+        if self._printed_dir.exists():
+            candidates.extend(self._printed_dir.iterdir())
+        suffix = Path(record.filename).suffix.lower()
+        stem = Path(record.filename).stem.lower()
+        matches: list[Path] = []
+        for cand in candidates:
+            if not cand.is_file():
+                continue
+            if cand.suffix.lower() != suffix:
+                continue
+            if cand.name == record.filename or cand.stem.lower().startswith(stem):
+                matches.append(cand)
+        if not matches:
+            return None
+        exact = [m for m in matches if m.name == record.filename]
+        if exact:
+            return exact[0]
+        return max(matches, key=lambda p: p.stat().st_mtime)
+
+    def _reprint_selected(self) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            return
+        source = self._find_printed_file(record)
+        if source is None:
+            self._log_threadsafe(f"reprint: archived file not found for {record.filename}")
+            return
+        target_name = f"reprint-{int(time.time())}-{record.filename}"
+        target = self._watch_dir / target_name
+        try:
+            shutil.copy2(source, target)
+        except OSError as exc:
+            self._log_threadsafe(f"reprint failed: {exc}")
+            return
+        self._log_threadsafe(f"reprint queued from {record.time_short}: {record.filename}")
+
+    def _open_selected_file(self) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            return
+        source = self._find_printed_file(record)
+        if source is None:
+            self._log_threadsafe(f"file no longer available: {record.filename}")
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(source))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(source)])
+        except OSError as exc:
+            self._log_threadsafe(f"open failed: {exc}")
+
+    def _show_selected_in_folder(self) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            return
+        source = self._find_printed_file(record)
+        if source is None:
+            self._log_threadsafe(f"file no longer available: {record.filename}")
+            return
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", "/select,", str(source)])
+            else:
+                subprocess.Popen(["xdg-open", str(source.parent)])
+        except OSError as exc:
+            self._log_threadsafe(f"reveal failed: {exc}")
+
+    def _filter_to_field(self, field: str) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            return
+        value = getattr(record, field, "")
+        if value:
+            self._filter_var.set(str(value))
+
+    def _copy_selected_filename(self) -> None:
+        record = self._selected_history_record()
+        if record is None:
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(record.filename)
+        except tk.TclError:
+            self._log_threadsafe("clipboard unavailable")
 
     # ---- thread-safe UI updates --------------------------------------
 
