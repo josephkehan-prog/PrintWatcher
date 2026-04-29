@@ -198,6 +198,13 @@ Each is standalone and discovers your `PrintInbox` automatically by reading the 
 | `scripts/screenshot_to_print.py` | Watches a Screenshots folder, copies (or `--move`s) every new image into the inbox | none |
 | `scripts/web_to_pdf.py` | Renders a URL to PDF via headless Edge/Chrome and drops it in the inbox; no Python rendering deps required | none (Edge/Chrome) |
 | `scripts/setup_inbox_presets.py` | Pre-creates iPad-friendly preset folders inside `PrintInbox\` (`__copies=30`, `__duplex`, `__duplex_mono`, etc.) so the iPad Files-app workflow becomes pick-folder-and-save | none |
+| `scripts/preview_shortcut_path.py` | Preview the OneDrive path an iPad Shortcut should produce given copies/sides/color/submitter — used to verify a Shortcut before trusting it with a 30-copy class set | none |
+| `scripts/pdf_inspect.py` | Reports page count, page sizes (with Letter/A4/Legal labels), embedded fonts, has-images flag, and estimated paper sheets simplex/duplex. Pre-flight check before printing big packets | `pypdf` |
+| `scripts/pdf_merge.py` | Combines multiple PDFs into one, alphabetically (`--folder`) or by manifest CSV (`--manifest`). `--to-inbox` writes the merged packet straight into PrintWatcher | `pypdf` |
+| `scripts/pdf_compress.py` | Stream-compresses PDFs and optionally downsamples embedded raster images to a max pixel dimension at a chosen JPEG quality. `--target-mb` iterates until the file is below your size target | `pypdf`, `pillow` |
+| `scripts/clear_queue.py` | Lists or clears stuck Windows print-queue jobs via PowerShell `Get-PrintJob` / `Remove-PrintJob`. Always dry-run unless `--confirm` is passed | none (Windows) |
+| `scripts/dedupe_inbox.py` | Hashes everything in `PrintInbox/` (and optionally `_printed/`); moves duplicates into `_skipped/` so the watcher won't re-print them. Always dry-run unless `--apply` is passed | none |
+| `scripts/schedule_print.py` | Holds a file in `_scheduled/` and releases it into the inbox at a chosen time. CLI accepts `--at "8am tomorrow"`, `--in 30m`, ISO 8601, etc. Run `--daemon` to honour the schedule (drop into Startup folder for set-and-forget) | none |
 
 ### Stapling, hole-punching, and other finishing options
 
