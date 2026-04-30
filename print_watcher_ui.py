@@ -793,8 +793,8 @@ class App(tk.Tk):
         self._pending_lock = threading.Lock()
 
         self.title("PrintWatcher")
-        self.geometry("960x680")
-        self.minsize(720, 560)
+        self.geometry("920x620")
+        self.minsize(700, 540)
         self.configure(bg=COLOR_BG)
         self._set_window_icon()
 
@@ -909,42 +909,38 @@ class App(tk.Tk):
         style.map("App.Treeview.Heading", background=[("active", COLOR_BTN_HOVER)])
 
     def _build_hero(self) -> None:
-        hero = tk.Frame(self, bg=COLOR_BG, padx=22, pady=18)
+        hero = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
         hero.pack(fill="x")
 
         title = tk.Frame(hero, bg=COLOR_BG)
         title.pack(fill="x")
 
-        self._dot = tk.Canvas(title, width=18, height=18, bg=COLOR_BG, highlightthickness=0)
-        self._dot.pack(side="left", pady=(4, 0))
+        self._dot = tk.Canvas(title, width=16, height=16, bg=COLOR_BG, highlightthickness=0)
+        self._dot.pack(side="left", pady=(2, 0))
         self._set_dot(COLOR_OK)
 
         wordmark = tk.Frame(title, bg=COLOR_BG)
-        wordmark.pack(side="left", padx=(12, 0))
+        wordmark.pack(side="left", padx=(10, 0))
 
         tk.Label(
             wordmark, text="PrintWatcher", fg=COLOR_TEXT, bg=COLOR_BG,
-            font=("Segoe UI Semibold", 18),
+            font=("Segoe UI Semibold", 15),
         ).pack(anchor="w")
         self._status_label = tk.Label(
             wordmark, text="Active · watching for new files", fg=COLOR_MUTED,
-            bg=COLOR_BG, font=("Segoe UI", 10),
+            bg=COLOR_BG, font=("Segoe UI", 9),
         )
-        self._status_label.pack(anchor="w", pady=(2, 0))
+        self._status_label.pack(anchor="w")
 
         self._pause_btn = ttk.Button(
             title, text="Pause", style="Pause.TButton", command=self._toggle_pause,
         )
         self._pause_btn.pack(side="right", anchor="n")
 
-        path_label = tk.Label(
-            hero, text=str(self._watch_dir), fg=COLOR_MUTED, bg=COLOR_BG,
-            font=("Segoe UI", 9),
-        )
-        path_label.pack(anchor="w", pady=(10, 12))
+        # Path is shown in the bottom status bar instead of duplicating it here.
 
         stats = tk.Frame(hero, bg=COLOR_BG)
-        stats.pack(fill="x")
+        stats.pack(fill="x", pady=(12, 0))
         self._stat_labels: dict[str, tk.Label] = {}
         cells = (
             ("printed", "Printed"),
@@ -953,18 +949,18 @@ class App(tk.Tk):
             ("errors", "Errors"),
         )
         for idx, (key, label) in enumerate(cells):
-            cell = tk.Frame(stats, bg=COLOR_PANEL, padx=18, pady=14)
-            cell.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 10, 0))
+            cell = tk.Frame(stats, bg=COLOR_PANEL, padx=14, pady=8)
+            cell.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 8, 0))
             stats.grid_columnconfigure(idx, weight=1, uniform="stat")
             tk.Label(
                 cell, text=label.upper(), fg=COLOR_MUTED, bg=COLOR_PANEL,
-                font=("Segoe UI", 8, "bold"),
+                font=("Segoe UI", 7, "bold"),
             ).pack(anchor="w")
             value = tk.Label(
                 cell, text=str(self._stats[key]), fg=COLOR_TEXT, bg=COLOR_PANEL,
-                font=("Segoe UI Semibold", 22),
+                font=("Segoe UI Semibold", 18),
             )
-            value.pack(anchor="w", pady=(4, 0))
+            value.pack(anchor="w", pady=(2, 0))
             self._stat_labels[key] = value
 
     def _build_tabs(self) -> None:
@@ -1115,27 +1111,27 @@ class App(tk.Tk):
         self._build_pending_context_menu()
 
     def _build_action_bar(self) -> None:
-        bar = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
-        bar.pack(fill="x")
-        ttk.Button(bar, text="Open inbox", style="Action.TButton",
-                   command=lambda: self._open_folder(self._watch_dir)).pack(side="left")
-        ttk.Button(bar, text="Open printed", style="Action.TButton",
-                   command=lambda: self._open_folder(self._printed_dir)).pack(side="left", padx=8)
-        ttk.Button(bar, text="Rescan now", style="Action.TButton",
-                   command=self._rescan_now).pack(side="left", padx=8)
-        ttk.Button(bar, text="Clear log", style="Action.TButton",
-                   command=self._clear_log).pack(side="left", padx=8)
-        ttk.Button(bar, text="Clear history", style="Action.TButton",
-                   command=self._clear_history).pack(side="left", padx=8)
-        ttk.Button(bar, text="Quit", style="Action.TButton",
-                   command=self._on_close).pack(side="right")
+        # Streamlined: every button that used to live here is reachable
+        # via File / View / Tools menus or keyboard shortcuts:
+        #
+        #   Open inbox      File menu      Ctrl+O
+        #   Open printed    File menu
+        #   Rescan now      File menu      Ctrl+R
+        #   Clear log       View menu
+        #   Clear history   View menu
+        #   Quit            File menu      Ctrl+Q
+        #
+        # The bottom status bar handles inbox path + last activity, the
+        # hero handles Pause. No floating button row needed.
+        return
 
     def _set_dot(self, color: str) -> None:
         self._dot.delete("all")
-        # Outer halo + filled center for a softer pill look
-        self._dot.create_oval(0, 0, 18, 18, fill=color, outline=color)
-        self._dot.create_oval(5, 5, 13, 13, fill=COLOR_BG, outline="")
-        self._dot.create_oval(7, 7, 11, 11, fill=color, outline="")
+        # Outer halo + filled center for a softer pill look. Sized for a 16px
+        # canvas (was 18px before the streamlined hero).
+        self._dot.create_oval(0, 0, 16, 16, fill=color, outline=color)
+        self._dot.create_oval(4, 4, 12, 12, fill=COLOR_BG, outline="")
+        self._dot.create_oval(6, 6, 10, 10, fill=color, outline="")
 
     # ---- window chrome -----------------------------------------------
 
@@ -1664,73 +1660,72 @@ class App(tk.Tk):
         wrap = tk.Frame(self, bg=COLOR_BG, padx=18, pady=4)
         wrap.pack(fill="x")
 
-        panel = tk.Frame(wrap, bg=COLOR_PANEL, padx=14, pady=12)
+        panel = tk.Frame(wrap, bg=COLOR_PANEL, padx=14, pady=10)
         panel.pack(fill="x")
-        tk.Label(
-            panel, text="Print options", fg=COLOR_TEXT, bg=COLOR_PANEL,
-            font=("Segoe UI", 10, "bold"),
-        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
-        # Row 1: printer dropdown + refresh + copies
-        tk.Label(panel, text="Printer", fg=COLOR_MUTED, bg=COLOR_PANEL,
-                 font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", padx=(0, 8))
+        # Single-row layout: each control is a labeled cell, all inline.
+        cell_pad = (0, 12)
+
+        printer_cell = tk.Frame(panel, bg=COLOR_PANEL)
+        printer_cell.pack(side="left", fill="x", expand=True, padx=cell_pad)
+        tk.Label(printer_cell, text="PRINTER", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
         self._printer_var = tk.StringVar(value=DEFAULT_PRINTER_LABEL)
         self._printer_combo = ttk.Combobox(
-            panel, textvariable=self._printer_var, state="readonly", width=42,
+            printer_cell, textvariable=self._printer_var, state="readonly",
         )
-        self._printer_combo.grid(row=1, column=1, sticky="ew", padx=(0, 6))
+        self._printer_combo.pack(fill="x")
         self._printer_combo.bind("<<ComboboxSelected>>", self._on_printer_change)
 
-        ttk.Button(
-            panel, text="Refresh", style="Action.TButton",
-            command=self._refresh_printers,
-        ).grid(row=1, column=2, padx=(0, 16))
-
-        tk.Label(panel, text="Copies", fg=COLOR_MUTED, bg=COLOR_PANEL,
-                 font=("Segoe UI", 9)).grid(row=1, column=3, sticky="e", padx=(0, 6))
+        copies_cell = tk.Frame(panel, bg=COLOR_PANEL)
+        copies_cell.pack(side="left", padx=cell_pad)
+        tk.Label(copies_cell, text="COPIES", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
         self._copies_var = tk.IntVar(value=1)
         copies_spin = ttk.Spinbox(
-            panel, from_=1, to=99, textvariable=self._copies_var, width=5,
+            copies_cell, from_=1, to=99, textvariable=self._copies_var, width=5,
             command=self._on_copies_change,
         )
-        copies_spin.grid(row=1, column=4, sticky="w")
+        copies_spin.pack()
         copies_spin.bind("<FocusOut>", lambda _e: self._on_copies_change())
         copies_spin.bind("<Return>", lambda _e: self._on_copies_change())
 
-        panel.grid_columnconfigure(1, weight=1)
-
-        # Row 2: sides + color
-        tk.Label(panel, text="Sides", fg=COLOR_MUTED, bg=COLOR_PANEL,
-                 font=("Segoe UI", 9)).grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(10, 0))
+        sides_cell = tk.Frame(panel, bg=COLOR_PANEL)
+        sides_cell.pack(side="left", padx=cell_pad)
+        tk.Label(sides_cell, text="SIDES", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
         self._sides_var = tk.StringVar(value=SIDES_CHOICES[0][0])
         sides_combo = ttk.Combobox(
-            panel, textvariable=self._sides_var, state="readonly",
-            values=[label for label, _ in SIDES_CHOICES],
+            sides_cell, textvariable=self._sides_var, state="readonly",
+            values=[label for label, _ in SIDES_CHOICES], width=20,
         )
-        sides_combo.grid(row=2, column=1, sticky="ew", padx=(0, 16), pady=(10, 0))
+        sides_combo.pack()
         sides_combo.bind("<<ComboboxSelected>>", self._on_sides_change)
 
-        tk.Label(panel, text="Color", fg=COLOR_MUTED, bg=COLOR_PANEL,
-                 font=("Segoe UI", 9)).grid(row=2, column=3, sticky="e", padx=(0, 6), pady=(10, 0))
+        color_cell = tk.Frame(panel, bg=COLOR_PANEL)
+        color_cell.pack(side="left", padx=cell_pad)
+        tk.Label(color_cell, text="COLOR", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
         self._color_var = tk.StringVar(value=COLOR_CHOICES[0][0])
         color_combo = ttk.Combobox(
-            panel, textvariable=self._color_var, state="readonly", width=14,
+            color_cell, textvariable=self._color_var, state="readonly", width=12,
             values=[label for label, _ in COLOR_CHOICES],
         )
-        color_combo.grid(row=2, column=4, sticky="w", pady=(10, 0))
+        color_combo.pack()
         color_combo.bind("<<ComboboxSelected>>", self._on_color_change)
 
-        # Row 3: stapling note
-        tk.Label(
-            panel,
-            text=(
-                "Stapling / hole-punch: SumatraPDF can't toggle finishing options. "
-                "Set them in the printer's driver defaults (Settings -> Printers -> "
-                "Printing preferences -> Finishing) or at the device's release dialog."
-            ),
-            fg=COLOR_MUTED, bg=COLOR_PANEL, font=("Segoe UI", 8),
-            wraplength=720, justify="left",
-        ).grid(row=3, column=0, columnspan=5, sticky="w", pady=(10, 0))
+        refresh_cell = tk.Frame(panel, bg=COLOR_PANEL)
+        refresh_cell.pack(side="left", padx=(4, 0))
+        tk.Label(refresh_cell, text=" ", fg=COLOR_MUTED, bg=COLOR_PANEL,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
+        ttk.Button(
+            refresh_cell, text="↻", style="Action.TButton",
+            command=self._refresh_printers, width=3,
+        ).pack()
+
+        # Stapling note moved to a tooltip-style line under the panel only when
+        # space allows. README + docs already cover it; the in-UI nag was eating
+        # vertical real estate.
 
         self._refresh_printers()
 
