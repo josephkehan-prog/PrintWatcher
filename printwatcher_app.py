@@ -42,6 +42,8 @@ SUBCOMMANDS: dict[str, str] = {
     "pdf-inspect": "scripts.pdf_inspect",
     "pdf-merge": "scripts.pdf_merge",
     "pdf-compress": "scripts.pdf_compress",
+    "pdf-split": "scripts.pdf_split",
+    "pdf-watermark": "scripts.pdf_watermark",
     "redact": "scripts.redact",
     "name-stamper": "scripts.name_stamper",
     "roster-split": "scripts.roster_split",
@@ -53,6 +55,7 @@ SUBCOMMANDS: dict[str, str] = {
     "cleanup": "scripts.cleanup_printed",
     "clear-queue": "scripts.clear_queue",
     "presets": "scripts.setup_inbox_presets",
+    "printer-test": "scripts.printer_test",
     # Workflow daemons
     "schedule": "scripts.schedule_print",
     "auto-merge": "scripts.auto_merge",
@@ -60,6 +63,7 @@ SUBCOMMANDS: dict[str, str] = {
     "screenshot": "scripts.screenshot_to_print",
     # Reporting / utility
     "report": "scripts.weekly_report",
+    "history-search": "scripts.history_search",
     "web-to-pdf": "scripts.web_to_pdf",
     "preview-shortcut": "scripts.preview_shortcut_path",
 }
@@ -68,11 +72,14 @@ SUBCOMMANDS: dict[str, str] = {
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Watcher",        ("ui", "tray", "watcher")),
     ("PDF tools",      ("pdf-inspect", "pdf-merge", "pdf-compress",
-                        "redact", "name-stamper", "roster-split")),
+                        "pdf-split", "pdf-watermark", "redact",
+                        "name-stamper", "roster-split")),
     ("Rosters",        ("roster",)),
-    ("Inbox hygiene",  ("verify", "dedupe", "cleanup", "clear-queue", "presets")),
+    ("Inbox hygiene",  ("verify", "dedupe", "cleanup", "clear-queue",
+                        "presets", "printer-test")),
     ("Daemons",        ("schedule", "auto-merge", "email", "screenshot")),
-    ("Reporting",      ("report", "web-to-pdf", "preview-shortcut")),
+    ("Reporting",      ("report", "history-search", "web-to-pdf",
+                        "preview-shortcut")),
 )
 
 
