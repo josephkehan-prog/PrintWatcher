@@ -22,6 +22,7 @@ a = Analysis(
     hiddenimports=[
         'pystray._win32',
         'PIL._tkinter_finder',
+        'customtkinter',
         'pypdf',
         'pypdfium2',
         'reportlab',

@@ -30,6 +30,19 @@ import sys
 import threading
 import time
 import tkinter as tk
+
+# CustomTkinter is an optional dependency. When installed it gives us
+# rounded corners, per-widget alpha, and modern hover states for the
+# chrome surfaces. We fall back to a thin shim that aliases the relevant
+# CTk widgets to their tk/ttk equivalents so the rest of the file works
+# unchanged on a vanilla Tk install. The shim only kicks in for headless
+# CI and legacy environments — the bundled .exe always ships CTk.
+try:
+    import customtkinter as _ctk  # type: ignore[import-not-found]
+    _CTK_AVAILABLE = True
+except ImportError:
+    _ctk = None
+    _CTK_AVAILABLE = False
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -704,6 +717,55 @@ DEFAULT_THEME = "Ocean"
 DARK_THEMES = frozenset({"Ocean", "Forest", "Indigo"})
 GLASSY_THEMES = frozenset({"Glass"})
 
+# Per-widget rounded-corner radii used when CustomTkinter is present.
+# Plain Tk has no rounded corners; the values below are silently ignored
+# when the CTk shim falls through to tk.Frame.
+RADIUS_CARD = 12
+RADIUS_BUTTON = 8
+RADIUS_PANEL = 14
+
+
+def _ctk_frame(parent, *, fg_color=None, corner_radius=RADIUS_CARD,
+               border_width=0, border_color=None, **kwargs):
+    """Return a CTkFrame when CTk is available, else a tk.Frame.
+
+    Translates CTk's `fg_color` argument to Tk's `bg`. Plain-Tk callers
+    that pass `bg` explicitly are honoured.
+    """
+    if _CTK_AVAILABLE:
+        return _ctk.CTkFrame(
+            parent,
+            fg_color=fg_color,
+            corner_radius=corner_radius,
+            border_width=border_width,
+            border_color=border_color,
+            **kwargs,
+        )
+    bg = kwargs.pop("bg", fg_color)
+    if bg in (None, "transparent"):
+        bg = COLOR_PANEL
+    return tk.Frame(parent, bg=bg, **kwargs)
+
+
+def _ctk_button(parent, *, text, command, fg_color=None, hover_color=None,
+                text_color=None, corner_radius=RADIUS_BUTTON, width=None,
+                **kwargs):
+    """CTkButton with sensible Tk fallback. Plain-Tk path uses ttk.Button."""
+    if _CTK_AVAILABLE:
+        opts = {
+            "text": text, "command": command,
+            "corner_radius": corner_radius,
+            "fg_color": fg_color or COLOR_PANEL,
+            "hover_color": hover_color or COLOR_BTN_HOVER,
+            "text_color": text_color or COLOR_TEXT,
+            "border_width": 0,
+        }
+        if width:
+            opts["width"] = width
+        return _ctk.CTkButton(parent, **opts, **kwargs)
+    btn = ttk.Button(parent, text=text, command=command, style="Action.TButton")
+    return btn
+
 # Module-level color names update when the theme changes.
 COLOR_BG = THEMES[DEFAULT_THEME]["BG"]
 COLOR_PANEL = THEMES[DEFAULT_THEME]["PANEL"]
@@ -756,7 +818,13 @@ def save_preferences(prefs: dict) -> None:
         log.warning("could not save preferences: %s", exc)
 
 
-class App(tk.Tk):
+# When CTk is loaded, App inherits from ctk.CTk (which itself extends
+# tk.Tk). The subclass otherwise stays identical — every tk.Tk method we
+# rely on is available on CTk too.
+_AppBase = _ctk.CTk if _CTK_AVAILABLE else tk.Tk
+
+
+class App(_AppBase):
     def __init__(self, watch_dir: Path, sumatra: Path) -> None:
         super().__init__()
         self._watch_dir = watch_dir
@@ -802,7 +870,9 @@ class App(tk.Tk):
         self._build_ui()
         self._bind_keyboard_shortcuts()
         self._refresh_history()
-        # Apply glass effects after the window is visible so DWM has an HWND
+        # Apply CTk light/dark mode + glass effects after the window is
+        # visible so DWM has an HWND.
+        self._apply_ctk_appearance()
         self.after(50, self._apply_glass_effects)
 
         self._worker = PrinterWorker(
@@ -949,18 +1019,21 @@ class App(tk.Tk):
             ("errors", "Errors"),
         )
         for idx, (key, label) in enumerate(cells):
-            cell = tk.Frame(stats, bg=COLOR_PANEL, padx=14, pady=8)
-            cell.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 8, 0))
+            cell = _ctk_frame(
+                stats, fg_color=COLOR_PANEL, corner_radius=RADIUS_CARD,
+            )
+            cell.grid(row=0, column=idx, sticky="ew",
+                      padx=(0 if idx == 0 else 8, 0), ipadx=14, ipady=8)
             stats.grid_columnconfigure(idx, weight=1, uniform="stat")
             tk.Label(
                 cell, text=label.upper(), fg=COLOR_MUTED, bg=COLOR_PANEL,
                 font=("Segoe UI", 7, "bold"),
-            ).pack(anchor="w")
+            ).pack(anchor="w", padx=14, pady=(8, 0))
             value = tk.Label(
                 cell, text=str(self._stats[key]), fg=COLOR_TEXT, bg=COLOR_PANEL,
-                font=("Segoe UI Semibold", 18),
+                font=("Segoe UI Semibold", self._scaled(18)),
             )
-            value.pack(anchor="w", pady=(2, 0))
+            value.pack(anchor="w", padx=14, pady=(2, 8))
             self._stat_labels[key] = value
 
     def _build_tabs(self) -> None:
@@ -1278,6 +1351,14 @@ class App(tk.Tk):
             variable=self._reduce_transparency_var,
             command=self._toggle_reduce_transparency,
         )
+        self._larger_text_var = tk.BooleanVar(
+            value=bool(self._preferences.get("larger_text", False))
+        )
+        a11y_menu.add_checkbutton(
+            label="Larger text  (apply on next launch)",
+            variable=self._larger_text_var,
+            command=self._toggle_larger_text,
+        )
         view_menu.add_cascade(label="Accessibility", menu=a11y_menu)
 
         view_menu.add_separator()
@@ -1384,6 +1465,34 @@ class App(tk.Tk):
             f"reduce transparency: {'on' if new_value else 'off'}"
         )
 
+    def _toggle_larger_text(self) -> None:
+        new_value = bool(self._larger_text_var.get())
+        self._preferences["larger_text"] = new_value
+        save_preferences(self._preferences)
+        self._show_modal_message(
+            "Larger text",
+            f"Larger text {'on' if new_value else 'off'}.\n\n"
+            "Restart PrintWatcher to apply — font sizes are baked into widgets at build time.",
+        )
+
+    def _scaled(self, size: int) -> int:
+        """Return a font size adjusted for the larger-text accessibility toggle."""
+        if self._preferences.get("larger_text"):
+            return max(size + 2, int(round(size * 1.15)))
+        return size
+
+    def _apply_ctk_appearance(self) -> None:
+        """Bridge our palette to CTk's light/dark mode + scaling factor."""
+        if not _CTK_AVAILABLE:
+            return
+        try:
+            mode = "Dark" if self._theme_name in DARK_THEMES else "Light"
+            _ctk.set_appearance_mode(mode)
+            scale = 1.10 if self._preferences.get("larger_text") else 1.0
+            _ctk.set_widget_scaling(scale)
+        except Exception:
+            pass
+
     def _switch_theme(self, name: str) -> None:
         if name not in THEMES:
             return
@@ -1394,6 +1503,7 @@ class App(tk.Tk):
         # Glass effects (Mica backdrop, alpha, dark titlebar) can re-apply
         # live without rebuilding widgets; widget-level recolour still
         # needs a relaunch.
+        self._apply_ctk_appearance()
         self._apply_glass_effects()
         self._log_threadsafe(f"theme changed to {name} (widgets reload on next launch)")
         self._show_modal_message(

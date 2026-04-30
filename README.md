@@ -126,7 +126,10 @@ What it does differently from the tray version:
 - **"Today" stat tile** — fourth card alongside Printed / In queue / Errors, showing successful prints from today only.
 - **Bottom status bar** — always-on row showing the inbox path on the left and the most recent activity timestamp on the right.
 - **Glass theme** — Apple-inspired light palette paired with **Windows 11 Mica backdrop** via DWM, immersive titlebar that matches the theme tone, and rounded window corners. Window-level alpha is **not** used (it would make text translucent over whatever's behind the window, failing WCAG contrast); the glass look comes only from the OS compositor backdrop, which renders behind the client area, not over it. All widget surfaces stay fully opaque so text contrast against panels stays at AA / AAA levels.
-- **Accessibility — Reduce transparency** under **View → Accessibility** disables the DWM backdrop entirely for users who want maximum readability or run on lower-power hardware. Setting persists.
+- **Accessibility menu** under **View → Accessibility** — toggles persisted in `preferences.json`:
+  - **Reduce transparency** disables the DWM backdrop entirely (instant)
+  - **Larger text** scales fonts 1.15× and CTk widget scaling 1.10× on next launch
+- **Optional CustomTkinter chrome** — install with `pip install customtkinter` (or `pip install -e .[ctk]`) to get rounded corners on stat tiles + buttons, hover transitions, and proper appearance-mode bridging between the chosen palette and CTk's light/dark mode. Without CTk the UI falls back to plain Tk frames cleanly — no breakage, just sharper corners.
 - **Keyboard shortcuts** — `Ctrl+P` pause, `Ctrl+R` rescan, `Ctrl+F` focus filter, `Ctrl+O` open inbox, `F5` refresh history, `Esc` hide to tray, `Ctrl+Q` quit
 - **Sticky tray icon** — `Esc` or **File → Hide to tray** stows the window; the system tray icon's menu shows / pauses / quits
 - **Manual rescan button** — re-checks the inbox immediately
