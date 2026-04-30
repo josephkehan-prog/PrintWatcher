@@ -49,6 +49,8 @@ SUBCOMMANDS: dict[str, str] = {
     "roster-split": "scripts.roster_split",
     # Roster / class management
     "roster": "scripts.roster",
+    "portfolio": "scripts.student_portfolio",
+    "parent-letter": "scripts.parent_letter",
     # Inbox housekeeping
     "verify": "scripts.verify_environment",
     "dedupe": "scripts.dedupe_inbox",
@@ -74,7 +76,7 @@ GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("PDF tools",      ("pdf-inspect", "pdf-merge", "pdf-compress",
                         "pdf-split", "pdf-watermark", "redact",
                         "name-stamper", "roster-split")),
-    ("Rosters",        ("roster",)),
+    ("Rosters",        ("roster", "portfolio", "parent-letter")),
     ("Inbox hygiene",  ("verify", "dedupe", "cleanup", "clear-queue",
                         "presets", "printer-test")),
     ("Daemons",        ("schedule", "auto-merge", "email", "screenshot")),

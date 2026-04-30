@@ -21,6 +21,8 @@ HIDDEN_SCRIPTS = [
     'scripts.name_stamper',
     'scripts.roster_split',
     'scripts.roster',
+    'scripts.student_portfolio',
+    'scripts.parent_letter',
     'scripts.verify_environment',
     'scripts.dedupe_inbox',
     'scripts.cleanup_printed',
