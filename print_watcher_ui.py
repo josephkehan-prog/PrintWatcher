@@ -778,6 +778,21 @@ COLOR_LOG_TEXT = THEMES[DEFAULT_THEME]["LOG_TEXT"]
 COLOR_BTN_HOVER = THEMES[DEFAULT_THEME]["BTN_HOVER"]
 
 
+def _blend_hex(c1: str, c2: str, t: float) -> str:
+    """Linear blend between two `#rrggbb` colours; t=0 returns c1, t=1 returns c2."""
+    t = max(0.0, min(1.0, t))
+    a = c1.lstrip("#")
+    b = c2.lstrip("#")
+    if len(a) == 3:
+        a = "".join(ch * 2 for ch in a)
+    if len(b) == 3:
+        b = "".join(ch * 2 for ch in b)
+    r = int(int(a[0:2], 16) * (1 - t) + int(b[0:2], 16) * t)
+    g = int(int(a[2:4], 16) * (1 - t) + int(b[2:4], 16) * t)
+    bl = int(int(a[4:6], 16) * (1 - t) + int(b[4:6], 16) * t)
+    return f"#{r:02x}{g:02x}{bl:02x}"
+
+
 def _apply_theme(name: str) -> None:
     """Update module-level color constants from THEMES[name]."""
     global COLOR_BG, COLOR_PANEL, COLOR_LOG_BG, COLOR_TEXT, COLOR_MUTED
@@ -874,6 +889,7 @@ class App(_AppBase):
         # visible so DWM has an HWND.
         self._apply_ctk_appearance()
         self.after(50, self._apply_glass_effects)
+        self.after(100, self._start_pulse)
 
         self._worker = PrinterWorker(
             sumatra=sumatra,
@@ -979,28 +995,33 @@ class App(_AppBase):
         style.map("App.Treeview.Heading", background=[("active", COLOR_BTN_HOVER)])
 
     def _build_hero(self) -> None:
-        hero = tk.Frame(self, bg=COLOR_BG, padx=22, pady=14)
+        hero = tk.Frame(self, bg=COLOR_BG, padx=22, pady=18)
         hero.pack(fill="x")
 
         title = tk.Frame(hero, bg=COLOR_BG)
         title.pack(fill="x")
 
         self._dot = tk.Canvas(title, width=16, height=16, bg=COLOR_BG, highlightthickness=0)
-        self._dot.pack(side="left", pady=(2, 0))
+        self._dot.pack(side="left", pady=(6, 0))
         self._set_dot(COLOR_OK)
 
         wordmark = tk.Frame(title, bg=COLOR_BG)
-        wordmark.pack(side="left", padx=(10, 0))
+        wordmark.pack(side="left", padx=(12, 0))
 
+        # Editorial micro-cap kicker — "P R I N T W A T C H E R" tracked
+        # out, sets the tone before the larger status line below it.
         tk.Label(
-            wordmark, text="PrintWatcher", fg=COLOR_TEXT, bg=COLOR_BG,
-            font=("Segoe UI Semibold", 15),
+            wordmark, text="P R I N T   W A T C H E R",
+            fg=COLOR_MUTED, bg=COLOR_BG,
+            font=("Segoe UI", self._scaled(8), "bold"),
         ).pack(anchor="w")
         self._status_label = tk.Label(
-            wordmark, text="Active · watching for new files", fg=COLOR_MUTED,
-            bg=COLOR_BG, font=("Segoe UI", 9),
+            wordmark,
+            text="Active · watching for new files",
+            fg=COLOR_TEXT, bg=COLOR_BG,
+            font=("Segoe UI", self._scaled(13)),
         )
-        self._status_label.pack(anchor="w")
+        self._status_label.pack(anchor="w", pady=(4, 0))
 
         self._pause_btn = ttk.Button(
             title, text="Pause", style="Pause.TButton", command=self._toggle_pause,
@@ -1010,7 +1031,7 @@ class App(_AppBase):
         # Path is shown in the bottom status bar instead of duplicating it here.
 
         stats = tk.Frame(hero, bg=COLOR_BG)
-        stats.pack(fill="x", pady=(12, 0))
+        stats.pack(fill="x", pady=(16, 0))
         self._stat_labels: dict[str, tk.Label] = {}
         cells = (
             ("printed", "Printed"),
@@ -1018,20 +1039,25 @@ class App(_AppBase):
             ("pending", "In queue"),
             ("errors", "Errors"),
         )
+        # Tabular figures for stat values: Cascadia Mono on Win11, Consolas
+        # everywhere else, Courier New as a guaranteed fallback. All three
+        # render the digits at the same glyph width so '47' -> '48' doesn't
+        # cause the layout to shift.
+        numeric_font = ("Cascadia Mono SemiBold", self._scaled(24))
         for idx, (key, label) in enumerate(cells):
             cell = _ctk_frame(
                 stats, fg_color=COLOR_PANEL, corner_radius=RADIUS_CARD,
             )
             cell.grid(row=0, column=idx, sticky="ew",
-                      padx=(0 if idx == 0 else 8, 0), ipadx=14, ipady=8)
+                      padx=(0 if idx == 0 else 8, 0), ipadx=14, ipady=10)
             stats.grid_columnconfigure(idx, weight=1, uniform="stat")
             tk.Label(
                 cell, text=label.upper(), fg=COLOR_MUTED, bg=COLOR_PANEL,
-                font=("Segoe UI", 7, "bold"),
+                font=("Segoe UI", self._scaled(7), "bold"),
             ).pack(anchor="w", padx=14, pady=(8, 0))
             value = tk.Label(
                 cell, text=str(self._stats[key]), fg=COLOR_TEXT, bg=COLOR_PANEL,
-                font=("Segoe UI Semibold", self._scaled(18)),
+                font=numeric_font,
             )
             value.pack(anchor="w", padx=14, pady=(2, 8))
             self._stat_labels[key] = value
@@ -1052,11 +1078,13 @@ class App(_AppBase):
             bg=COLOR_LOG_BG,
             fg=COLOR_LOG_TEXT,
             insertbackground=COLOR_LOG_TEXT,
-            font=("Consolas", 10),
+            font=("Consolas", self._scaled(10)),
             wrap="none",
             relief="flat",
-            padx=12,
-            pady=10,
+            padx=14,
+            pady=12,
+            spacing1=3,   # space above each line
+            spacing3=2,   # space below each line — editorial line rhythm
         )
         self._log_text.pack(side="left", fill="both", expand=True)
         log_scroll = ttk.Scrollbar(log_inner, orient="vertical", command=self._log_text.yview)
@@ -1115,6 +1143,19 @@ class App(_AppBase):
         tree_scroll = ttk.Scrollbar(tree_inner, orient="vertical", command=self._history_tree.yview)
         tree_scroll.pack(side="right", fill="y")
         self._history_tree.configure(yscrollcommand=tree_scroll.set)
+
+        # Editorial empty-state — placed inside the same tree_inner via place()
+        # so it floats above the empty Treeview when there are no rows. lower()
+        # hides it behind the table when records arrive.
+        self._history_empty_label = tk.Label(
+            tree_inner,
+            text="",
+            fg=COLOR_MUTED, bg=COLOR_LOG_BG,
+            font=("Segoe UI", 11),
+            justify="center",
+        )
+        self._history_empty_label.place(relx=0.5, rely=0.5, anchor="center")
+        self._history_empty_label.lower(self._history_tree)
 
         # Preview panel (right side of the History tab)
         self._build_history_preview_panel(history_split)
@@ -1181,6 +1222,21 @@ class App(_AppBase):
         self._pending_tree.configure(yscrollcommand=pending_scroll.set)
         self._pending_tree.bind("<Double-Button-1>",
                                  lambda _e: self._print_pending_selected())
+
+        self._pending_empty_label = tk.Label(
+            pending_inner,
+            text=(
+                "No files held.\n"
+                "Toggle Hold incoming files above\n"
+                "and drop a PDF in your inbox."
+            ),
+            fg=COLOR_MUTED, bg=COLOR_LOG_BG,
+            font=("Segoe UI", 11),
+            justify="center",
+        )
+        self._pending_empty_label.place(relx=0.5, rely=0.5, anchor="center")
+        self._pending_empty_label.lower(self._pending_tree)
+
         self._build_pending_context_menu()
 
     def _build_action_bar(self) -> None:
@@ -1198,13 +1254,49 @@ class App(_AppBase):
         # hero handles Pause. No floating button row needed.
         return
 
-    def _set_dot(self, color: str) -> None:
+    def _set_dot(self, color: str, *, breath: float = 1.0) -> None:
+        """Draw the status pip.
+
+        `breath` is a 0..1 amplitude on the outer halo. 1.0 is full,
+        0.0 collapses to just the centre dot. The pulse loop tweens
+        this between ~0.4 and 1.0 while the watcher is running, then
+        holds at 1.0 when paused.
+        """
         self._dot.delete("all")
-        # Outer halo + filled center for a softer pill look. Sized for a 16px
-        # canvas (was 18px before the streamlined hero).
-        self._dot.create_oval(0, 0, 16, 16, fill=color, outline=color)
+        # Outer halo — its colour fades toward COLOR_BG as breath -> 0
+        halo = _blend_hex(color, COLOR_BG, 1.0 - breath)
+        self._dot.create_oval(0, 0, 16, 16, fill=halo, outline=halo)
+        # Negative-space ring carved out of the halo
         self._dot.create_oval(4, 4, 12, 12, fill=COLOR_BG, outline="")
+        # Inner solid dot — always full strength
         self._dot.create_oval(6, 6, 10, 10, fill=color, outline="")
+        self._dot_color = color
+
+    def _start_pulse(self) -> None:
+        """Drive the status pip at ~30fps; cancels itself on close."""
+        self._pulse_phase = 0.0
+        self._pulse_active = True
+        self._tick_pulse()
+
+    def _stop_pulse(self) -> None:
+        self._pulse_active = False
+
+    def _tick_pulse(self) -> None:
+        if not getattr(self, "_pulse_active", False):
+            return
+        try:
+            paused = self._worker.paused.is_set()
+        except AttributeError:
+            paused = True
+        if paused:
+            self._set_dot(COLOR_ERR, breath=1.0)
+        else:
+            import math
+            # 0.4..1.0 sine wave with a 2-second period
+            breath = 0.7 + 0.3 * math.sin(self._pulse_phase * math.pi / 30)
+            self._set_dot(COLOR_OK, breath=breath)
+            self._pulse_phase = (self._pulse_phase + 1) % 60
+        self.after(33, self._tick_pulse)
 
     # ---- window chrome -----------------------------------------------
 
@@ -1957,6 +2049,11 @@ class App(_AppBase):
             self._pending_count_label.configure(
                 text=f"Pending  {len(snapshot)}"
             )
+        if hasattr(self, "_pending_empty_label"):
+            if snapshot:
+                self._pending_empty_label.lower(self._pending_tree)
+            else:
+                self._pending_empty_label.lift()
 
     def _print_pending_selected(self) -> None:
         if not hasattr(self, "_pending_tree"):
@@ -2009,6 +2106,7 @@ class App(_AppBase):
 
     def _on_close(self) -> None:
         self._stop.set()
+        self._stop_pulse()
         if self._observer is not None:
             try:
                 self._observer.stop()
@@ -2056,6 +2154,7 @@ class App(_AppBase):
         for iid in self._history_tree.get_children():
             self._history_tree.delete(iid)
         self._history_row_records = {}
+        rendered = 0
         for record in records:
             if filter_text:
                 haystack = " ".join((
@@ -2081,6 +2180,28 @@ class App(_AppBase):
                 tags=(tag,),
             )
             self._history_row_records[iid] = record
+            rendered += 1
+        self._update_history_empty_state(rendered, bool(filter_text))
+
+    def _update_history_empty_state(self, rendered: int, filtered: bool) -> None:
+        """Show or hide the editorial empty-state placeholder."""
+        message = ""
+        if rendered == 0:
+            if filtered:
+                message = "Nothing matches that filter."
+            else:
+                message = (
+                    "No prints yet.\n"
+                    "Drop a PDF into your inbox\n"
+                    "and it'll appear here."
+                )
+        if not hasattr(self, "_history_empty_label"):
+            return
+        if message:
+            self._history_empty_label.configure(text=message)
+            self._history_empty_label.lift()
+        else:
+            self._history_empty_label.lower(self._history_tree)
 
     # ---- actions ------------------------------------------------------
 

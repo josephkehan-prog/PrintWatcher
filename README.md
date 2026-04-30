@@ -130,6 +130,9 @@ What it does differently from the tray version:
   - **Reduce transparency** disables the DWM backdrop entirely (instant)
   - **Larger text** scales fonts 1.15× and CTk widget scaling 1.10× on next launch
 - **Optional CustomTkinter chrome** — install with `pip install customtkinter` (or `pip install -e .[ctk]`) to get rounded corners on stat tiles + buttons, hover transitions, and proper appearance-mode bridging between the chosen palette and CTk's light/dark mode. Without CTk the UI falls back to plain Tk frames cleanly — no breakage, just sharper corners.
+- **Editorial typography pass** — tracked-out micro-cap kicker (`P R I N T   W A T C H E R`), 13pt status line, tabular monospace numerics (Cascadia Mono on Win11 → Consolas → Courier New) for the four stat values so numbers don't jitter when they update. Activity log gains editorial line rhythm (`spacing1=3 spacing3=2`).
+- **Breathing status pip** — sine-wave alpha breath at ~0.5 Hz on the corner pip while the watcher is active; solid + opaque the instant it pauses. The single distinctive moment, calmer than scattered hover micro-interactions.
+- **Empty-state typography** — when History or Pending has zero rows, the table area shows centred typographic placeholder text ("No prints yet. Drop a PDF into your inbox and it'll appear here.") rather than an empty grid.
 - **Keyboard shortcuts** — `Ctrl+P` pause, `Ctrl+R` rescan, `Ctrl+F` focus filter, `Ctrl+O` open inbox, `F5` refresh history, `Esc` hide to tray, `Ctrl+Q` quit
 - **Sticky tray icon** — `Esc` or **File → Hide to tray** stows the window; the system tray icon's menu shows / pauses / quits
 - **Manual rescan button** — re-checks the inbox immediately
