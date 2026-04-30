@@ -216,7 +216,7 @@ Apple Shortcuts (built-in iPad app) can pick a destination folder programmatical
 
 Now the share sheet has a one-tap "Print via PrintWatcher" entry → quick prompts → done.
 
-**Full step-by-step build for two Shortcuts** (Quick Print + Custom Print with prompts) is in [docs/IPAD_SHORTCUT.md](docs/IPAD_SHORTCUT.md). To preview what filename your Shortcut should produce, run:
+**Full step-by-step build for two Shortcuts** (Quick Print + Custom Print with prompts) is in [docs/IPAD_SHORTCUT.md](docs/IPAD_SHORTCUT.md). For a one-page printable cheat sheet of every iPad-side workflow (presets, filename grammar, gotchas, recipes), see [docs/IPAD_QUICKREF.md](docs/IPAD_QUICKREF.md). To preview what filename your Shortcut should produce, run:
 
 ```powershell
 python scripts\preview_shortcut_path.py --copies 30 --sides duplex --color mono --submitter MaryDoe --filename quiz.pdf
