@@ -51,9 +51,35 @@ PRINTED_SUBDIR = "_printed"
 DEFAULT_SUMATRA = Path(r"C:\Tools\SumatraPDF\SumatraPDF.exe")
 
 
+class _UiLogBridge(logging.Handler):
+    """Pipes Python logging records through to the App's Activity log.
+
+    Used while a Tools-menu action runs so the helper script's
+    `logging` output appears live in the same panel the watcher uses.
+    """
+
+    def __init__(self, callback):
+        super().__init__()
+        self._callback = callback
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self._callback(self.format(record))
+        except Exception:
+            self.handleError(record)
+
+
 def _logs_dir() -> Path:
     base = os.environ.get("APPDATA")
     return Path(base) / "PrintWatcher" / "logs" if base else Path.home() / ".printwatcher" / "logs"
+
+
+def _rosters_folder() -> Path:
+    base = os.environ.get("APPDATA")
+    return (
+        Path(base) / "PrintWatcher" / "rosters"
+        if base else Path.home() / ".printwatcher" / "rosters"
+    )
 
 DEFAULT_PRINTER_LABEL = "Windows default printer"
 SIDES_CHOICES = (
@@ -739,13 +765,19 @@ class App(tk.Tk):
         self._printed_dir.mkdir(parents=True, exist_ok=True)
         watch_dir.mkdir(parents=True, exist_ok=True)
 
-        self._stats = {"printed": 0, "pending": 0, "errors": 0}
+        self._stats = {"printed": 0, "today": 0, "pending": 0, "errors": 0}
         self._stop = threading.Event()
         self._observer: Observer | None = None
         self._print_options = PrintOptions()
         self._history = HistoryStore(default_history_path())
-        self._stats["printed"] = sum(1 for r in self._history.recent() if r.status == "ok")
-        self._stats["errors"] = sum(1 for r in self._history.recent() if r.status == "error")
+        recent = self._history.recent()
+        self._stats["printed"] = sum(1 for r in recent if r.status == "ok")
+        self._stats["errors"] = sum(1 for r in recent if r.status == "error")
+        today_iso = datetime.now().date().isoformat()
+        self._stats["today"] = sum(
+            1 for r in recent
+            if r.status == "ok" and r.timestamp.startswith(today_iso)
+        )
 
         self._preferences = load_preferences()
         self._theme_name = self._preferences.get("theme", DEFAULT_THEME)
@@ -804,6 +836,7 @@ class App(tk.Tk):
         self._build_options_panel()
         self._build_tabs()
         self._build_action_bar()
+        self._build_status_bar()
 
     def _init_styles(self) -> None:
         style = ttk.Style(self)
@@ -913,7 +946,12 @@ class App(tk.Tk):
         stats = tk.Frame(hero, bg=COLOR_BG)
         stats.pack(fill="x")
         self._stat_labels: dict[str, tk.Label] = {}
-        cells = (("printed", "Printed"), ("pending", "In queue"), ("errors", "Errors"))
+        cells = (
+            ("printed", "Printed"),
+            ("today", "Today"),
+            ("pending", "In queue"),
+            ("errors", "Errors"),
+        )
         for idx, (key, label) in enumerate(cells):
             cell = tk.Frame(stats, bg=COLOR_PANEL, padx=18, pady=14)
             cell.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 10, 0))
@@ -1223,6 +1261,45 @@ class App(tk.Tk):
         view_menu.add_command(label="Clear history", command=self._clear_history)
         menubar.add_cascade(label="View", menu=view_menu)
 
+        # Tools — runs helper scripts in-process and streams their
+        # logging output into the Activity tab.
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        tools_menu.add_command(
+            label="Verify environment",
+            command=lambda: self._run_tool("scripts.verify_environment", [], "verify"),
+        )
+        tools_menu.add_command(
+            label="Generate calibration page (auto-prints)",
+            command=lambda: self._run_tool(
+                "scripts.printer_test", ["--to-inbox"], "calibration page",
+            ),
+        )
+        tools_menu.add_command(
+            label="Weekly report (auto-prints)",
+            command=lambda: self._run_tool(
+                "scripts.weekly_report", ["--to-inbox"], "weekly report",
+            ),
+        )
+        tools_menu.add_command(
+            label="Search history…",
+            command=self._prompt_history_search,
+        )
+        tools_menu.add_separator()
+        tools_menu.add_command(
+            label="Dedupe inbox (dry-run)",
+            command=lambda: self._run_tool("scripts.dedupe_inbox", [], "dedupe (dry-run)"),
+        )
+        tools_menu.add_command(
+            label="Cleanup _printed (dry-run)",
+            command=lambda: self._run_tool("scripts.cleanup_printed", [], "cleanup (dry-run)"),
+        )
+        tools_menu.add_separator()
+        tools_menu.add_command(
+            label="Open rosters folder",
+            command=lambda: self._open_folder(_rosters_folder()),
+        )
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+
         # Help
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="Check for updates", command=self._check_updates)
@@ -1373,6 +1450,133 @@ class App(tk.Tk):
             0, self._show_modal_message, "Update available",
             f"v{latest} is available (you're on v{APP_VERSION}).\n\nDownload: {url_html}",
         )
+
+    # ---- in-process tool runner --------------------------------------
+
+    def _run_tool(self, module_name: str, args: list[str], label: str) -> None:
+        """Import a helper script and call its main() in a background thread."""
+        self._log_threadsafe(f"tool: {label} starting")
+        threading.Thread(
+            target=self._run_tool_async,
+            args=(module_name, args, label),
+            daemon=True,
+            name=f"Tool({label})",
+        ).start()
+
+    def _run_tool_async(self, module_name: str, args: list[str], label: str) -> None:
+        import contextlib
+        import importlib
+        import io as _io
+
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            self._log_threadsafe(f"tool: {label} missing dependency — {exc}")
+            return
+        if not hasattr(module, "main"):
+            self._log_threadsafe(f"tool: {module_name} has no main()")
+            return
+
+        stdout_buf = _io.StringIO()
+        stderr_buf = _io.StringIO()
+
+        # Bridge `logging` output emitted by the tool into the Activity log.
+        bridge = _UiLogBridge(self._log_threadsafe)
+        bridge.setLevel(logging.INFO)
+        bridge.setFormatter(logging.Formatter("%(message)s"))
+        root_logger = logging.getLogger()
+        root_logger.addHandler(bridge)
+
+        rc: int | None = 0
+        try:
+            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+                rc = module.main(list(args))
+        except SystemExit as exc:
+            rc = exc.code if isinstance(exc.code, int) else 1
+        except Exception as exc:  # pragma: no cover - tool runtime failure
+            self._log_threadsafe(f"tool: {label} crashed — {exc}")
+            return
+        finally:
+            root_logger.removeHandler(bridge)
+
+        for line in stdout_buf.getvalue().splitlines():
+            if line.strip():
+                self._log_threadsafe(line.rstrip())
+        for line in stderr_buf.getvalue().splitlines():
+            if line.strip():
+                self._log_threadsafe(f"err: {line.rstrip()}")
+        marker = "ok" if (rc or 0) == 0 else f"exit={rc}"
+        self._log_threadsafe(f"tool: {label} finished ({marker})")
+
+    def _prompt_history_search(self) -> None:
+        prompt = tk.Toplevel(self)
+        prompt.title("Search history")
+        prompt.configure(bg=COLOR_BG)
+        prompt.transient(self)
+        prompt.grab_set()
+        prompt.resizable(False, False)
+
+        body = tk.Frame(prompt, bg=COLOR_BG, padx=24, pady=18)
+        body.pack()
+        tk.Label(
+            body, text="Search history (substring or regex)",
+            fg=COLOR_TEXT, bg=COLOR_BG, font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            body, text="empty = all records · prefix with /…/ for regex",
+            fg=COLOR_MUTED, bg=COLOR_BG, font=("Segoe UI", 8),
+        ).pack(anchor="w", pady=(2, 8))
+
+        var = tk.StringVar()
+        entry = ttk.Entry(body, textvariable=var, width=44)
+        entry.pack(fill="x")
+        entry.focus_set()
+
+        def submit(_event: object = None) -> None:
+            text = var.get().strip()
+            prompt.destroy()
+            if not text:
+                self._run_tool("scripts.history_search", ["--limit", "20"],
+                               "history-search (recent)")
+                return
+            if text.startswith("/") and text.endswith("/") and len(text) > 2:
+                self._run_tool("scripts.history_search",
+                               ["--regex", text[1:-1]],
+                               f"history-search /{text[1:-1]}/")
+            else:
+                self._run_tool("scripts.history_search", ["--query", text],
+                               f"history-search {text!r}")
+
+        entry.bind("<Return>", submit)
+        button_row = tk.Frame(body, bg=COLOR_BG)
+        button_row.pack(anchor="e", pady=(12, 0))
+        ttk.Button(button_row, text="Cancel", style="Action.TButton",
+                   command=prompt.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(button_row, text="Search", style="Action.TButton",
+                   command=submit).pack(side="right")
+
+    # ---- bottom status bar -------------------------------------------
+
+    def _build_status_bar(self) -> None:
+        bar = tk.Frame(self, bg=COLOR_PANEL, height=22, padx=18)
+        bar.pack(side="bottom", fill="x")
+        bar.pack_propagate(False)
+        self._status_inbox_label = tk.Label(
+            bar, text=f"inbox: {self._watch_dir}", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 8), anchor="w",
+        )
+        self._status_inbox_label.pack(side="left")
+        self._status_activity_label = tk.Label(
+            bar, text="ready", fg=COLOR_MUTED, bg=COLOR_PANEL,
+            font=("Segoe UI", 8), anchor="e",
+        )
+        self._status_activity_label.pack(side="right")
+
+    def _update_status_bar(self, activity: str) -> None:
+        if not hasattr(self, "_status_activity_label"):
+            return
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self._status_activity_label.configure(text=f"{timestamp} · {activity}")
 
     # ---- tray icon -----------------------------------------------------
 
@@ -2138,7 +2342,12 @@ class App(tk.Tk):
 
     def _record_threadsafe(self, record: PrintRecord) -> None:
         self._history.append(record)
+        if record.status == "ok" and record.timestamp.startswith(
+            datetime.now().date().isoformat()
+        ):
+            self.after(0, self._bump_stat, "today", 1)
         self.after(0, self._refresh_history)
+        self.after(0, self._update_status_bar, f"last: {record.filename}")
 
     def _append_log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
