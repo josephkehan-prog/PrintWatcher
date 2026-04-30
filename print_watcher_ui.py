@@ -1142,13 +1142,27 @@ class App(tk.Tk):
     # ---- glass / Mica effects -----------------------------------------
 
     def _apply_glass_effects(self) -> None:
-        """Apply window translucency + Win11 Mica backdrop where supported."""
+        """Apply Win11 Mica/Acrylic backdrop, immersive titlebar, rounded corners.
+
+        Window-level alpha is intentionally NOT used — making the whole
+        client area translucent caused text to overlap whatever was
+        behind the window, which fails WCAG contrast for any user
+        background. The 'glass' look comes from the DWM backdrop, which
+        renders behind the client area, not over it. Widget surfaces
+        stay fully opaque so text is always legible.
+
+        Set preferences['reduce_transparency'] = True to disable the
+        backdrop entirely (Accessibility menu).
+        """
         is_glass = self._theme_name in GLASSY_THEMES
         is_dark = self._theme_name in DARK_THEMES
+        reduce_transparency = bool(
+            self._preferences.get("reduce_transparency", False)
+        )
 
-        # Whole-window alpha — lighter for Glass, fully opaque otherwise.
+        # Always fully opaque. No window alpha.
         try:
-            self.attributes("-alpha", 0.93 if is_glass else 1.0)
+            self.attributes("-alpha", 1.0)
         except tk.TclError:
             pass
 
@@ -1181,14 +1195,18 @@ class App(tk.Tk):
             pass
 
         # DWMWA_SYSTEMBACKDROP_TYPE = 38 (Win11 only): real frosted-glass
-        # backdrop using the OS compositor. Fails silently on Win10.
+        # backdrop using the OS compositor. Renders behind the window
+        # client area; widget paint covers it everywhere except the
+        # window edges (since Tk widgets are opaque). The "Reduce
+        # transparency" accessibility toggle disables it entirely.
         DWMWA_SYSTEMBACKDROP_TYPE = 38
         DWMSBT_NONE = 1
-        DWMSBT_MAINWINDOW = 2      # Mica
-        DWMSBT_TRANSIENTWINDOW = 3  # Acrylic (more blur, less battery-friendly)
-        backdrop = DWMSBT_TRANSIENTWINDOW if is_glass else (
-            DWMSBT_MAINWINDOW if is_dark else DWMSBT_NONE
-        )
+        DWMSBT_MAINWINDOW = 2       # Mica (subtle, battery-friendly)
+        DWMSBT_TRANSIENTWINDOW = 3  # Acrylic (heavier blur, more GPU)
+        if reduce_transparency:
+            backdrop = DWMSBT_NONE
+        else:
+            backdrop = DWMSBT_MAINWINDOW if (is_glass or is_dark) else DWMSBT_NONE
         backdrop_value = ctypes.c_int(backdrop)
         try:
             dwmapi.DwmSetWindowAttribute(
@@ -1253,6 +1271,19 @@ class App(tk.Tk):
                 command=lambda n=name: self._switch_theme(n),
             )
         view_menu.add_cascade(label="Theme", menu=theme_menu)
+
+        # Accessibility submenu
+        a11y_menu = tk.Menu(view_menu, tearoff=0)
+        self._reduce_transparency_var = tk.BooleanVar(
+            value=bool(self._preferences.get("reduce_transparency", False))
+        )
+        a11y_menu.add_checkbutton(
+            label="Reduce transparency  (disable Mica/Acrylic backdrop)",
+            variable=self._reduce_transparency_var,
+            command=self._toggle_reduce_transparency,
+        )
+        view_menu.add_cascade(label="Accessibility", menu=a11y_menu)
+
         view_menu.add_separator()
         view_menu.add_command(label="Pause / Resume\tCtrl+P", command=self._toggle_pause)
         view_menu.add_command(label="Focus filter\tCtrl+F",
@@ -1347,6 +1378,15 @@ class App(tk.Tk):
         return False
 
     # ---- theme switching ---------------------------------------------
+
+    def _toggle_reduce_transparency(self) -> None:
+        new_value = bool(self._reduce_transparency_var.get())
+        self._preferences["reduce_transparency"] = new_value
+        save_preferences(self._preferences)
+        self._apply_glass_effects()
+        self._log_threadsafe(
+            f"reduce transparency: {'on' if new_value else 'off'}"
+        )
 
     def _switch_theme(self, name: str) -> None:
         if name not in THEMES:
