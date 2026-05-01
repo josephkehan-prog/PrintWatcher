@@ -9,25 +9,16 @@
             x:Name="Nav"
             PaneDisplayMode="LeftCompact"
             IsBackButtonVisible="Collapsed"
-            IsSettingsVisible="False">
+            IsSettingsVisible="False"
+            SelectionChanged="OnNavigationSelectionChanged"
+            Background="{ThemeResource BgBrush}">
             <muxc:NavigationView.MenuItems>
                 <muxc:NavigationViewItem Content="Dashboard" Tag="dashboard" Icon="Home" IsSelected="True" />
-                <muxc:NavigationViewItem Content="History" Tag="history" Icon="List" />
-                <muxc:NavigationViewItem Content="Tools" Tag="tools" Icon="Repair" />
-                <muxc:NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" />
+                <muxc:NavigationViewItem Content="History" Tag="history" Icon="List" IsEnabled="False" />
+                <muxc:NavigationViewItem Content="Tools" Tag="tools" Icon="Repair" IsEnabled="False" />
+                <muxc:NavigationViewItem Content="Settings" Tag="settings" Icon="Setting" IsEnabled="False" />
             </muxc:NavigationView.MenuItems>
-            <Grid Padding="32">
-                <StackPanel Spacing="12" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <TextBlock
-                        Text="PrintWatcher"
-                        FontSize="48"
-                        FontWeight="Light" />
-                    <TextBlock
-                        x:Name="StatusText"
-                        Text="Connecting to backend..."
-                        Opacity="0.7" />
-                </StackPanel>
-            </Grid>
+            <Frame x:Name="ContentFrame" />
         </muxc:NavigationView>
     </Grid>
 </Window>
