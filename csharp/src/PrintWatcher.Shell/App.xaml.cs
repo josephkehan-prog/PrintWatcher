@@ -6,7 +6,7 @@ namespace PrintWatcher.Shell;
 
 public partial class App : Application
 {
-    public static App Current => (App)Application.Current!;
+    public static new App Current => (App)Application.Current!;
     public BackendSupervisor? Backend { get; private set; }
     public ApiClient? Api { get; private set; }
     public EventStream? Events { get; private set; }
