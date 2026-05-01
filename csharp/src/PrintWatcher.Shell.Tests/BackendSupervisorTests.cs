@@ -28,7 +28,7 @@ public sealed class BackendSupervisorTests
         try
         {
             await using var supervisor = new BackendSupervisor();
-            var info = await supervisor.StartAsync(exePath: "ignored").ConfigureAwait(false);
+            var info = await supervisor.StartAsync(exePath: "ignored");
             info.Port.Should().Be(9876);
             info.Token.Should().Be("devtoken");
             info.Pid.Should().Be(0);

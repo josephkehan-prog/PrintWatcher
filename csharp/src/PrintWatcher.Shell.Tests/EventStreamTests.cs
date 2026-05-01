@@ -28,7 +28,7 @@ public sealed class EventStreamTests
         var received = new BlockingCollection<(string, JsonElement)>();
         stream.FrameReceived += (type, raw) => received.Add((type, raw));
 
-        await stream.StartAsync().ConfigureAwait(false);
+        await stream.StartAsync();
 
         var first = await Task.Run(() => received.Take()).WaitAsync(TimeSpan.FromSeconds(2));
         var second = await Task.Run(() => received.Take()).WaitAsync(TimeSpan.FromSeconds(2));
@@ -82,7 +82,7 @@ public sealed class EventStreamTests
 
         public async Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken ct)
         {
-            var item = await Task.Run(() => _outbox.Take(ct), ct).ConfigureAwait(false);
+            var item = await Task.Run(() => _outbox.Take(ct), ct);
             if (item is null)
             {
                 _connected = false;

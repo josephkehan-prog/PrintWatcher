@@ -26,7 +26,7 @@ public sealed class ApiClientTests
         });
         using var client = new ApiClient(new Uri("http://localhost:1/"), "test-token", handler);
 
-        var response = await client.PostPauseAsync(true).ConfigureAwait(false);
+        var response = await client.PostPauseAsync(true);
 
         response.Should().NotBeNull();
         response!.Paused.Should().BeTrue();
@@ -38,13 +38,13 @@ public sealed class ApiClientTests
         var captured = "";
         var handler = new StubHandler(async (request, ct) =>
         {
-            captured = await request.Content!.ReadAsStringAsync(ct).ConfigureAwait(false);
+            captured = await request.Content!.ReadAsStringAsync(ct);
             return JsonResponse(captured);   // server echoes back
         });
         using var client = new ApiClient(new Uri("http://localhost:1/"), "t", handler);
 
         var sent = new PrintOptionsDto { Printer = "HP", Copies = 3, Sides = "duplex", Color = "color" };
-        var got = await client.PutOptionsAsync(sent).ConfigureAwait(false);
+        var got = await client.PutOptionsAsync(sent);
 
         captured.Should().Contain("\"copies\":3").And.Contain("\"sides\":\"duplex\"");
         got.Should().BeEquivalentTo(sent);
@@ -65,7 +65,7 @@ public sealed class ApiClientTests
         var handler = new StubHandler((request, ct) => JsonResponse(body));
         using var client = new ApiClient(new Uri("http://localhost:1/"), "t", handler);
 
-        var state = await client.GetStateAsync().ConfigureAwait(false);
+        var state = await client.GetStateAsync();
 
         state.Should().NotBeNull();
         state!.Version.Should().Be("0.4.0");
