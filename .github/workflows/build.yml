@@ -2,10 +2,12 @@ name: build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     tags: ['v*']
   pull_request:
-    branches: [main]
+    # Trigger for any target branch so stacked PRs (claude/winui-csharp-shell
+    # → claude/winui-shell-pages → ...) get CI without waiting for upstream to merge.
+    branches: ['**']
   workflow_dispatch:
 
 jobs:
