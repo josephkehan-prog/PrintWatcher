@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <RootNamespace>PrintWatcher.Shell.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    The shell project is a WinUI 3 app that targets net8.0-windows10.0.19041.0.
+    We compile-link to the source files we care about — services, models —
+    rather than referencing the project, so the test assembly can run on a
+    plain net8.0 framework. This keeps the test loop fast and avoids the
+    Windows App SDK runtime dependency in the test runner.
+  -->
+  <ItemGroup>
+    <Compile Include="..\PrintWatcher.Shell\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\PrintWatcher.Shell\Services\ApiClient.cs" Link="Services\ApiClient.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\EventStream.cs" Link="Services\EventStream.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\BackendLocator.cs" Link="Services\BackendLocator.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\BackendSupervisor.cs" Link="Services\BackendSupervisor.cs" />
+  </ItemGroup>
+
+</Project>
