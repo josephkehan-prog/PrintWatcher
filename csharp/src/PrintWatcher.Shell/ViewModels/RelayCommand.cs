@@ -1,0 +1,61 @@
+using System;
+using System.Threading.Tasks;
+using System.Windows.Input;
+
+namespace PrintWatcher.Shell.ViewModels;
+
+public sealed class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+
+    public void Execute(object? parameter) => _execute();
+
+    public void NotifyCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+public sealed class AsyncRelayCommand : ICommand
+{
+    private readonly Func<Task> _execute;
+    private readonly Func<bool>? _canExecute;
+    private bool _running;
+
+    public AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) =>
+        !_running && (_canExecute?.Invoke() ?? true);
+
+    public async void Execute(object? parameter)
+    {
+        _running = true;
+        Raise();
+        try
+        {
+            await _execute().ConfigureAwait(true);
+        }
+        finally
+        {
+            _running = false;
+            Raise();
+        }
+    }
+
+    private void Raise() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}

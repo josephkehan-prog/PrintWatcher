@@ -32,10 +32,12 @@
   -->
   <ItemGroup>
     <Compile Include="..\PrintWatcher.Shell\Models\**\*.cs" Link="Models\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\PrintWatcher.Shell\ViewModels\**\*.cs" Link="ViewModels\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\PrintWatcher.Shell\Services\ApiClient.cs" Link="Services\ApiClient.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\EventStream.cs" Link="Services\EventStream.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\BackendLocator.cs" Link="Services\BackendLocator.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\BackendSupervisor.cs" Link="Services\BackendSupervisor.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\ThemePalette.cs" Link="Services\ThemePalette.cs" />
   </ItemGroup>
 
 </Project>

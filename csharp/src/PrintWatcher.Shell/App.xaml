@@ -8,6 +8,19 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Fallback brushes. ThemeService overrides these at app startup; the
+                 defaults match the Ocean palette so the designer + the brief flash
+                 before Apply() runs both look intentional. -->
+            <SolidColorBrush x:Key="BgBrush" Color="#FF006494" />
+            <SolidColorBrush x:Key="PanelBrush" Color="#FF0582CA" />
+            <SolidColorBrush x:Key="LogBgBrush" Color="#FF003E5C" />
+            <SolidColorBrush x:Key="TextBrush" Color="#FFE0F2FF" />
+            <SolidColorBrush x:Key="MutedBrush" Color="#FFA3C4D9" />
+            <SolidColorBrush x:Key="OkBrush" Color="#FF00A6FB" />
+            <SolidColorBrush x:Key="ErrBrush" Color="#FF6B8A9C" />
+            <SolidColorBrush x:Key="LogTextBrush" Color="#FFE0F2FF" />
+            <SolidColorBrush x:Key="BtnHoverBrush" Color="#FF0A96E0" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
