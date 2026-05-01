@@ -9,24 +9,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: pytest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .[dev]
-      - name: Test
-        run: pytest -q
-
   build-windows-exe:
-    name: Build Windows binaries
-    needs: test
+    name: Test + Build Windows binaries
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,17 +20,23 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller watchdog pystray pillow pypdf reportlab pypdfium2
+          python -m pip install -e ".[dev,backend]"
+          python -m pip install pyinstaller
+      - name: Test
+        run: pytest -q
       - name: Build UI binary (windowed)
         run: pyinstaller printwatcher.spec --noconfirm
       - name: Build CLI binary (console)
         run: pyinstaller printwatcher-cli.spec --noconfirm
+      - name: Build backend binary (headless server for WinUI shell)
+        run: pyinstaller printwatcher-backend.spec --noconfirm
       - name: Bundle release zip
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item dist/PrintWatcher.exe release/
           Copy-Item dist/PrintWatcher-cli.exe release/
+          Copy-Item dist/PrintWatcher-backend.exe release/
           Copy-Item README.md release/
           Copy-Item LICENSE release/
           Copy-Item assets/printwatcher.png release/icon.png
@@ -58,6 +48,7 @@ jobs:
           path: |
             dist/PrintWatcher.exe
             dist/PrintWatcher-cli.exe
+            dist/PrintWatcher-backend.exe
             release/PrintWatcher-windows.zip
           if-no-files-found: error
           retention-days: 30
@@ -80,5 +71,6 @@ jobs:
           files: |
             release/dist/PrintWatcher.exe
             release/dist/PrintWatcher-cli.exe
+            release/dist/PrintWatcher-backend.exe
             release/release/PrintWatcher-windows.zip
           generate_release_notes: true

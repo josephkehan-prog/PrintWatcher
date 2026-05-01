@@ -38,6 +38,7 @@ SUBCOMMANDS: dict[str, str] = {
     "ui": "print_watcher_ui",
     "tray": "print_watcher_tray",
     "watcher": "print_watcher",
+    "backend": "printwatcher.server.__main__",
     # PDF tools
     "pdf-inspect": "scripts.pdf_inspect",
     "pdf-merge": "scripts.pdf_merge",
@@ -75,7 +76,7 @@ SUBCOMMANDS: dict[str, str] = {
 
 # Categories used only when rendering --list for humans.
 GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Watcher",        ("ui", "tray", "watcher")),
+    ("Watcher",        ("ui", "tray", "watcher", "backend")),
     ("PDF tools",      ("pdf-inspect", "pdf-merge", "pdf-compress",
                         "pdf-split", "pdf-watermark", "redact",
                         "name-stamper", "roster-split")),
