@@ -22,6 +22,13 @@ iPad (Share → Save to Files → OneDrive/PrintInbox)
 
 ~60 lines of Python. Tray icon for pause/resume. Auto-starts at login via Task Scheduler.
 
+> **v0.4 architecture note.** PrintWatcher is being ported to a native C# /
+> WinUI 3 shell that talks to the existing Python watcher over a small REST
+> + WebSocket surface on `127.0.0.1`. Both UIs ship side-by-side through
+> v0.5; v0.6 deletes the Tk UI. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+> for the two-process design and [`docs/DEV_SETUP.md`](docs/DEV_SETUP.md)
+> for running both processes locally.
+
 ## Supported file types
 
 `.pdf`, `.png`, `.jpg`, `.jpeg` — anything SumatraPDF can render.
