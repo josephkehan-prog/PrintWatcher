@@ -13,7 +13,6 @@ public sealed class DashboardViewModel : ObservableObject
     private const int LogCapacity = 1000;
 
     private readonly ApiClient? _api;
-    private readonly EventStream? _events;
 
     private int _printed;
     private int _today;
@@ -25,11 +24,9 @@ public sealed class DashboardViewModel : ObservableObject
 
     public DashboardViewModel() { /* design-time + tests */ }
 
-    public DashboardViewModel(ApiClient api, EventStream events)
+    public DashboardViewModel(ApiClient api)
     {
         _api = api;
-        _events = events;
-        _events.FrameReceived += OnFrame;
         TogglePauseCommand = new AsyncRelayCommand(TogglePauseAsync);
     }
 
@@ -117,7 +114,30 @@ public sealed class DashboardViewModel : ObservableObject
                     if (opts is not null) Options = opts;
                 }
                 break;
+            case "tool":
+                ApplyToolFrame(raw);
+                break;
         }
+    }
+
+    private void ApplyToolFrame(JsonElement raw)
+    {
+        // Tool stdout / log lines stream into the activity log so the user
+        // can see what a long-running script is doing without a separate
+        // dialog. Matches the legacy Tk Tools menu behaviour.
+        var stream = raw.TryGetProperty("stream", out var s) ? s.GetString() : null;
+        var line = raw.TryGetProperty("line", out var l) ? l.GetString() : null;
+        if (stream == "end")
+        {
+            var rc = raw.TryGetProperty("rc", out var r) ? r.GetInt32() : 0;
+            Log.Add(new LogLine("", rc == 0 ? "info" : "error", $"tool finished (rc={rc})"));
+        }
+        else if (line is not null)
+        {
+            Log.Add(new LogLine("", stream == "log" ? "info" : "info", line));
+        }
+        while (Log.Count > LogCapacity)
+            Log.RemoveAt(0);
     }
 
     private void ApplyStat(JsonElement raw)

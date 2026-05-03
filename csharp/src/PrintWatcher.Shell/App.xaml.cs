@@ -31,12 +31,18 @@ public partial class App : Application
         _ui = DispatcherQueue.GetForCurrentThread();
         Theme.Apply(ThemeRegistry.Default);
 
-        Backend = new BackendSupervisor();
-        var info = await Backend.StartAsync(BackendLocator.FindBackend());
+        var backend = new BackendSupervisor();
+        Backend = backend;
+        var info = await backend.StartAsync(BackendLocator.FindBackend());
         Api = new ApiClient(info.BaseAddress, info.Token);
         Events = new EventStream(info.WebSocketAddress, info.Token);
 
-        Shell = new ShellViewModel(new DashboardViewModel(Api, Events));
+        Shell = new ShellViewModel(
+            dashboard: new DashboardViewModel(Api),
+            history: new HistoryViewModel(Api),
+            pending: new PendingViewModel(Api),
+            tools: new ToolsViewModel(Api),
+            settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail));
         Events.FrameReceived += OnFrame;
         Events.StateChanged += OnConnState;
         await Events.StartAsync();
@@ -49,12 +55,15 @@ public partial class App : Application
                 Shell.Theme = snapshot.Preferences.Theme;
                 Theme.Apply(snapshot.Preferences.Theme);
                 Shell.Dashboard.ApplySnapshot(snapshot);
+                Shell.Settings.ApplySnapshot(snapshot.Preferences);
+                Shell.Pending.OnPendingFrame(snapshot.Pending);
             }
+            await Shell.History.RefreshAsync();
         }
         catch (Exception ex)
         {
             // Surface as a log line for the dashboard rather than crashing.
-            Backend.Push("ERR initial /api/state failed: " + ex.Message);
+            backend.Push("ERR initial /api/state failed: " + ex.Message);
         }
 
         _window = new MainWindow();
@@ -65,8 +74,9 @@ public partial class App : Application
     {
         // EventStream raises on the read loop's worker thread; ViewModels
         // mutate ObservableCollections that bindings consume, so we must
-        // marshal back to the UI dispatcher.
-        _ui?.TryEnqueue(() => Shell?.Dashboard.OnFrame(type, raw));
+        // marshal back to the UI dispatcher. ShellViewModel fans the frame
+        // out to whichever child VM cares about it.
+        _ui?.TryEnqueue(() => Shell?.OnFrame(type, raw));
     }
 
     private void OnConnState(ConnState state)
