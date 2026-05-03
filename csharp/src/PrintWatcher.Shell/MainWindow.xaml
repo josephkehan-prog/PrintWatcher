@@ -5,7 +5,41 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="36" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--
+          Custom title bar. The whole row is the draggable region; we punch
+          out a single padding column on the right via TitleBarRightInset so
+          the system min/max/close buttons stay clickable. Background is the
+          theme's BgBrush so the bar tints with the active palette.
+        -->
+        <Grid
+            x:Name="AppTitleBar"
+            Grid.Row="0"
+            Background="{ThemeResource BgBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                Grid.Column="0"
+                Text="PrintWatcher"
+                Margin="16,0,0,0"
+                VerticalAlignment="Center"
+                FontSize="12"
+                CharacterSpacing="120"
+                Foreground="{ThemeResource TextBrush}" />
+            <!-- Spacer column 1 carries the drag region -->
+            <!-- TitleBarRightInset reserves space for the system caption buttons -->
+            <Grid Grid.Column="2" x:Name="TitleBarRightInset" Width="148" />
+        </Grid>
+
         <muxc:NavigationView
+            Grid.Row="1"
             x:Name="Nav"
             PaneDisplayMode="LeftCompact"
             IsBackButtonVisible="Collapsed"

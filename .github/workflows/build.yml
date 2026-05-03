@@ -38,7 +38,16 @@ jobs:
       - name: Test C# shell
         working-directory: csharp
         run: dotnet test src/PrintWatcher.Shell.Tests/PrintWatcher.Shell.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
-      - name: Build UI binary (windowed)
+      - name: Publish WinUI shell (self-contained, win-x64)
+        working-directory: csharp
+        run: >
+          dotnet publish src/PrintWatcher.Shell/PrintWatcher.Shell.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:WindowsAppSDKSelfContained=true
+          --output publish/shell
+      - name: Build UI binary (legacy Tk, windowed)
         run: pyinstaller printwatcher.spec --noconfirm
       - name: Build CLI binary (console)
         run: pyinstaller printwatcher-cli.spec --noconfirm
@@ -47,19 +56,27 @@ jobs:
       - name: Bundle release zip
         shell: pwsh
         run: |
+          # Stage everything that ships in the v0.4 zip into a single folder.
+          # Native WinUI shell becomes the canonical PrintWatcher.exe (with its
+          # self-contained .NET 8 + Windows App SDK runtime alongside).
+          # Tk binary is renamed PrintWatcher-legacy.exe so it doesn't collide;
+          # ships through v0.5 then deletes per docs/ARCHITECTURE.md.
+          New-Item -ItemType Directory -Force -Path release-stage | Out-Null
+          Copy-Item -Recurse csharp/publish/shell/* release-stage/
+          Copy-Item dist/PrintWatcher.exe         release-stage/PrintWatcher-legacy.exe
+          Copy-Item dist/PrintWatcher-cli.exe     release-stage/
+          Copy-Item dist/PrintWatcher-backend.exe release-stage/
+          Copy-Item README.md  release-stage/
+          Copy-Item LICENSE    release-stage/
+          Copy-Item assets/printwatcher.png release-stage/icon.png
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item dist/PrintWatcher.exe release/
-          Copy-Item dist/PrintWatcher-cli.exe release/
-          Copy-Item dist/PrintWatcher-backend.exe release/
-          Copy-Item README.md release/
-          Copy-Item LICENSE release/
-          Copy-Item assets/printwatcher.png release/icon.png
-          Compress-Archive -Path release/* -DestinationPath release/PrintWatcher-windows.zip
+          Compress-Archive -Path release-stage/* -DestinationPath release/PrintWatcher-windows.zip
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: PrintWatcher-windows
           path: |
+            csharp/publish/shell/PrintWatcher.exe
             dist/PrintWatcher.exe
             dist/PrintWatcher-cli.exe
             dist/PrintWatcher-backend.exe
