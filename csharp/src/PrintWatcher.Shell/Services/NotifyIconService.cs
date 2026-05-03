@@ -1,8 +1,10 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using PrintWatcher.Shell.Models;
 
 namespace PrintWatcher.Shell.Services;
@@ -45,13 +47,17 @@ public sealed class NotifyIconService : IDisposable
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(quitItem);
 
-        // SymbolIconSource keeps the dependency on actual ICO loading
-        // out of unpackaged WinUI's loose ends. The shell's window
-        // chrome and Start-menu entry still use the proper .ico file.
+        // H.NotifyIcon's IconSource is typed Microsoft.UI.Xaml.Media.ImageSource —
+        // BitmapImage is the only ImageSource that works for unpackaged WinUI
+        // 3. We point at the PNG (rather than the .ico) because BitmapImage
+        // doesn't render multi-resolution .ico files reliably in WinUI 3
+        // unpackaged. The window chrome and Start-menu entry still use the
+        // .ico via Package.appxmanifest / ApplicationIcon.
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Square44x44Logo.png");
         _taskbarIcon = new TaskbarIcon
         {
             ToolTipText = "PrintWatcher",
-            IconSource = new SymbolIconSource { Symbol = Symbol.Print },
+            IconSource = new BitmapImage(new Uri(iconPath)),
             ContextFlyout = menu,
         };
         _taskbarIcon.LeftClickCommand = new RelayLeftClickCommand(ShowWindow);
