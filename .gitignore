@@ -15,3 +15,9 @@ PrintWatcher.generated.xml
 # OS
 Thumbs.db
 .DS_Store
+
+# .NET / C# build artifacts
+bin/
+obj/
+*.user
+publish/
