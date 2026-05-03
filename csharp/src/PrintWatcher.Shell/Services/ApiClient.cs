@@ -96,6 +96,23 @@ public sealed class ApiClient : IDisposable
         ToolRunRequestDto request, CancellationToken ct = default) =>
         PostAsync<ToolRunRequestDto, ToolRunStartedDto>("/api/tools/run", request, ct);
 
+    /// <summary>
+    /// Upload a single file into the watch directory via multipart POST. The
+    /// backend sanitizes the filename, validates the extension, and writes
+    /// the bytes — same path as a OneDrive sync would have written.
+    /// </summary>
+    public async Task UploadInboxAsync(string filePath, CancellationToken ct = default)
+    {
+        using var stream = System.IO.File.OpenRead(filePath);
+        using var content = new MultipartFormDataContent();
+        var streamContent = new StreamContent(stream);
+        streamContent.Headers.ContentType =
+            new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        content.Add(streamContent, name: "file", fileName: System.IO.Path.GetFileName(filePath));
+        using var response = await _http.PostAsync("/api/inbox/drop", content, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task PostShutdownAsync(CancellationToken ct = default)
     {
         try
