@@ -38,15 +38,17 @@ jobs:
       - name: Test C# shell
         working-directory: csharp
         run: dotnet test src/PrintWatcher.Shell.Tests/PrintWatcher.Shell.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
-      - name: Publish WinUI shell (self-contained, win-x64)
+      - name: Publish WinUI shell (win-x64, runtime-dependent)
         working-directory: csharp
+        # Self-contained publish for unpackaged WinUI 3 + Windows App SDK is
+        # currently flaky in this CI matrix — shipping v0.4 runtime-dependent.
+        # End users install .NET 8 desktop runtime + Windows App SDK runtime
+        # once. Self-contained is tracked as a follow-up polish task.
         run: >
           dotnet publish src/PrintWatcher.Shell/PrintWatcher.Shell.csproj
           --configuration Release
-          --runtime win-x64
-          --self-contained true
           -p:Platform=x64
-          -p:WindowsAppSDKSelfContained=true
+          -p:RuntimeIdentifier=win-x64
           -p:EnableMsixTooling=false
           -p:GenerateAppxPackageOnBuild=false
           --output publish/shell

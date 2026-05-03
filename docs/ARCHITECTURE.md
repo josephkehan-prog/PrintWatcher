@@ -8,7 +8,7 @@ and the on-disk history. They speak REST + WebSocket on `127.0.0.1` only.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  PrintWatcher.exe   (C# / WinUI 3 / .NET 8 self-contained)           │
+│  PrintWatcher.exe   (C# / WinUI 3 / .NET 8 — runtime-dependent v0.4) │
 │                                                                      │
 │   MainWindow ◀── ShellViewModel ◀── EventStream (ClientWebSocket)    │
 │                                          ▲                           │

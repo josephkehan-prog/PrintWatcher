@@ -142,20 +142,24 @@ pyinstaller printwatcher.spec --noconfirm
 pyinstaller printwatcher-cli.spec --noconfirm
 # → dist\PrintWatcher-cli.exe
 
-# 4. C# shell (self-contained, win-x64)
+# 4. C# shell (runtime-dependent, win-x64)
 dotnet publish csharp\src\PrintWatcher.Shell\PrintWatcher.Shell.csproj `
   --configuration Release `
-  --runtime win-x64 `
-  --self-contained true `
-  -p:WindowsAppSDKSelfContained=true `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  -p:EnableMsixTooling=false `
+  -p:GenerateAppxPackageOnBuild=false `
   --output csharp\publish\shell
-# → csharp\publish\shell\PrintWatcher.exe + ~200 MB of bundled runtime DLLs
-#   (.NET 8, Windows App SDK, WinUI 3 — no system prerequisites on the user's machine).
+# → csharp\publish\shell\PrintWatcher.exe (~30 MB; needs .NET 8 desktop
+#   runtime + Windows App SDK 1.5 runtime installed on the target machine).
 ```
 
-Single-file publish (`PublishSingleFile=true`) doesn't work cleanly with
-the Windows App SDK's native components yet — leave it off. The release
-zip ships the full publish folder; the shell launches
+Self-contained publish (`--self-contained true -p:WindowsAppSDKSelfContained=true`)
+is the eventual goal but currently fails on this CI matrix with an opaque
+`exit code 1` from the publish target. v0.4 ships runtime-dependent;
+end users install .NET 8 desktop runtime + Windows App SDK runtime once
+(both available via winget / standalone installers from Microsoft).
+The release zip ships the full publish folder; the shell launches
 `PrintWatcher-backend.exe` from the same folder by relative path.
 
 ## Common issues
