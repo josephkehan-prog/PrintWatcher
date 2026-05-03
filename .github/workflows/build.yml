@@ -45,7 +45,10 @@ jobs:
           --configuration Release
           --runtime win-x64
           --self-contained true
+          -p:Platform=x64
           -p:WindowsAppSDKSelfContained=true
+          -p:EnableMsixTooling=false
+          -p:GenerateAppxPackageOnBuild=false
           --output publish/shell
       - name: Build UI binary (legacy Tk, windowed)
         run: pyinstaller printwatcher.spec --noconfirm
