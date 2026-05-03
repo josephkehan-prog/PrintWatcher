@@ -18,13 +18,15 @@ public sealed class ShellViewModel : ObservableObject
         HistoryViewModel history,
         PendingViewModel pending,
         ToolsViewModel tools,
-        SettingsViewModel settings)
+        SettingsViewModel settings,
+        OptionsViewModel options)
     {
         Dashboard = dashboard;
         History = history;
         Pending = pending;
         Tools = tools;
         Settings = settings;
+        Options = options;
     }
 
     public DashboardViewModel Dashboard { get; }
@@ -32,6 +34,7 @@ public sealed class ShellViewModel : ObservableObject
     public PendingViewModel Pending { get; }
     public ToolsViewModel Tools { get; }
     public SettingsViewModel Settings { get; }
+    public OptionsViewModel Options { get; }
 
     public ConnState Connection
     {
@@ -72,6 +75,13 @@ public sealed class ShellViewModel : ObservableObject
                     var items = itemsEl.Deserialize<System.Collections.Generic.IReadOnlyList<PendingItemDto>>(
                         JsonContext.Default.Options);
                     if (items is not null) Pending.OnPendingFrame(items);
+                }
+                break;
+            case "options":
+                if (raw.TryGetProperty("options", out var optsEl))
+                {
+                    var opts = optsEl.Deserialize<PrintOptionsDto>(JsonContext.Default.PrintOptionsDto);
+                    if (opts is not null) Options.ApplyOptions(opts);
                 }
                 break;
         }

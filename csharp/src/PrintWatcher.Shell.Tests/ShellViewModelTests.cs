@@ -40,12 +40,27 @@ public sealed class ShellViewModelTests
         shell.Dashboard.Printed.Should().Be(7);
     }
 
+    [Fact]
+    public void OnFrame_OptionsFrame_RoutesToOptionsViewModel()
+    {
+        var shell = BuildShell();
+        var frame = Parse(@"{""type"":""options"",""options"":{""printer"":""HP"",""copies"":4,""sides"":""duplex"",""color"":""color""}}");
+
+        shell.OnFrame("options", frame);
+
+        shell.Options.Printer.Should().Be("HP");
+        shell.Options.Copies.Should().Be(4);
+        shell.Options.Sides.Should().Be("duplex");
+        shell.Options.Color.Should().Be("color");
+    }
+
     private static ShellViewModel BuildShell() => new(
         new DashboardViewModel(),
         new HistoryViewModel(),
         new PendingViewModel(),
         new ToolsViewModel(),
-        new SettingsViewModel());
+        new SettingsViewModel(),
+        new OptionsViewModel());
 
     private static JsonElement Parse(string json)
     {

@@ -52,7 +52,8 @@ public partial class App : Application
             history: new HistoryViewModel(Api),
             pending: new PendingViewModel(Api),
             tools: new ToolsViewModel(Api),
-            settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail));
+            settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail),
+            options: new OptionsViewModel((dto, ct) => Api.PutOptionsAsync(dto, ct)));
         Events.FrameReceived += OnFrame;
         Events.StateChanged += OnConnState;
         await Events.StartAsync();
@@ -67,6 +68,8 @@ public partial class App : Application
                 Shell.Dashboard.ApplySnapshot(snapshot);
                 Shell.Settings.ApplySnapshot(snapshot.Preferences);
                 Shell.Pending.OnPendingFrame(snapshot.Pending);
+                Shell.Options.ApplyOptions(snapshot.Options);
+                Shell.Options.ApplyPrinters(snapshot.Printers);
             }
             await Shell.History.RefreshAsync();
         }

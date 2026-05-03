@@ -3,7 +3,8 @@
     x:Class="PrintWatcher.Shell.Pages.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:PrintWatcher.Shell.ViewModels">
+    xmlns:vm="using:PrintWatcher.Shell.ViewModels"
+    xmlns:controls="using:PrintWatcher.Shell.Controls">
     <Page.Resources>
         <Style x:Key="StatTileStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
@@ -37,10 +38,16 @@
                         FontSize="32"
                         FontWeight="Light"
                         Foreground="{ThemeResource TextBrush}" />
-                    <TextBlock
-                        Text="{x:Bind ViewModel.StatusLabel, Mode=OneWay}"
-                        FontSize="13"
-                        Foreground="{ThemeResource MutedBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <controls:StatusPip
+                            VerticalAlignment="Center"
+                            IsActive="{x:Bind Negate(ViewModel.Paused), Mode=OneWay}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.StatusLabel, Mode=OneWay}"
+                            FontSize="13"
+                            Foreground="{ThemeResource MutedBrush}"
+                            VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
                 <Button
                     Grid.Column="1"
@@ -73,15 +80,28 @@
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
 
+            <controls:OptionsPanel />
+
             <Border
                 Background="{ThemeResource LogBgBrush}"
                 CornerRadius="14"
                 Padding="16"
                 MinHeight="280">
                 <StackPanel Spacing="8">
-                    <TextBlock
-                        Text="ACTIVITY"
-                        Style="{StaticResource StatLabelStyle}" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Grid.Column="0"
+                            Text="ACTIVITY"
+                            Style="{StaticResource StatLabelStyle}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="Drop files anywhere on this page to print"
+                            Style="{StaticResource StatLabelStyle}" />
+                    </Grid>
                     <ListView
                         ItemsSource="{x:Bind ViewModel.Log}"
                         SelectionMode="None"
