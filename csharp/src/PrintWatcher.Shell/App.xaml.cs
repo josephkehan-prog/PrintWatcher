@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using PrintWatcher.Shell.Services;
@@ -15,10 +16,19 @@ public partial class App : Application
     public ApiClient? Api { get; private set; }
     public EventStream? Events { get; private set; }
     public ShellViewModel? Shell { get; private set; }
+    public NotifyIconService? NotifyIcon { get; private set; }
     public ThemeService Theme { get; } = new();
+
+    /// <summary>
+    /// True once <see cref="QuitAsync"/> begins teardown. Read by
+    /// <see cref="MainWindow"/>'s closing handler to distinguish "user
+    /// clicked X → hide to tray" from "tray Quit → real exit".
+    /// </summary>
+    public bool ShuttingDown => _shuttingDown;
 
     private MainWindow? _window;
     private DispatcherQueue? _ui;
+    private bool _shuttingDown;
 
     public App()
     {
@@ -67,7 +77,32 @@ public partial class App : Application
         }
 
         _window = new MainWindow();
+        NotifyIcon = new NotifyIconService(() => _window, Api, QuitAsync);
+        // Keep the tray menu's Pause/Resume label in sync with the dashboard.
+        Shell.Dashboard.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DashboardViewModel.Paused))
+                NotifyIcon?.SetPaused(Shell.Dashboard.Paused);
+        };
+        NotifyIcon.SetPaused(Shell.Dashboard.Paused);
         _window.Activate();
+    }
+
+    private async Task QuitAsync()
+    {
+        if (_shuttingDown) return;
+        _shuttingDown = true;
+        try
+        {
+            if (Api is not null) await Api.PostShutdownAsync();
+        }
+        catch
+        {
+            // Backend may have died already; supervisor disposal will reap it.
+        }
+        if (Backend is not null) await Backend.DisposeAsync();
+        NotifyIcon?.Dispose();
+        Exit();
     }
 
     private void OnFrame(string type, JsonElement raw)

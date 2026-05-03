@@ -38,7 +38,13 @@ jobs:
       - name: Test C# shell
         working-directory: csharp
         run: dotnet test src/PrintWatcher.Shell.Tests/PrintWatcher.Shell.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
-      - name: Build UI binary (windowed)
+      # WinUI 3 unpackaged `dotnet publish` is failing with an opaque
+      # `exit code 1` in this CI matrix and the GH Actions log viewer
+      # only surfaces annotations, not the underlying MSBuild error.
+      # Tracked as a follow-up: get publish working from a Windows dev
+      # box where we can read the full log, then re-add the step here
+      # and update docs/DEV_SETUP.md and the release zip below.
+      - name: Build UI binary (legacy Tk, windowed)
         run: pyinstaller printwatcher.spec --noconfirm
       - name: Build CLI binary (console)
         run: pyinstaller printwatcher-cli.spec --noconfirm
@@ -48,8 +54,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item dist/PrintWatcher.exe release/
-          Copy-Item dist/PrintWatcher-cli.exe release/
+          Copy-Item dist/PrintWatcher.exe         release/PrintWatcher-legacy.exe
+          Copy-Item dist/PrintWatcher-cli.exe     release/
           Copy-Item dist/PrintWatcher-backend.exe release/
           Copy-Item README.md release/
           Copy-Item LICENSE release/

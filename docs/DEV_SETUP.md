@@ -142,17 +142,27 @@ pyinstaller printwatcher.spec --noconfirm
 pyinstaller printwatcher-cli.spec --noconfirm
 # → dist\PrintWatcher-cli.exe
 
-# 4. C# shell (self-contained single-file)
+# 4. C# shell — local-only for now; CI publish is a tracked follow-up
 dotnet publish csharp\src\PrintWatcher.Shell\PrintWatcher.Shell.csproj `
-  -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true `
-  -p:IncludeNativeLibrariesForSelfExtract=true `
-  -o publish\shell
-# → publish\shell\PrintWatcher.exe (~85 MB; .NET 8 + Windows App SDK bundled)
+  --configuration Release `
+  -p:Platform=x64 `
+  -p:RuntimeIdentifier=win-x64 `
+  --output csharp\publish\shell
 ```
 
-Drop `PrintWatcher.exe` and `PrintWatcher-backend.exe` into the same
-folder; the shell launches the backend by relative path.
+`dotnet publish` for unpackaged WinUI 3 + Windows App SDK 1.5 is currently
+failing in our CI matrix with an opaque `exit code 1`. It works fine
+locally on a real Windows dev box, so the recommended dev path is:
+
+1. Build/run via `dotnet run` for development (see Terminal 2 above).
+2. Publish locally on Windows when you need a deployable folder, copy
+   `PrintWatcher-backend.exe` next to the published `PrintWatcher.exe`,
+   and zip the folder.
+
+The CI release zip currently ships only the legacy Tk binary
+(`PrintWatcher-legacy.exe`), the CLI exe, and the backend exe. The
+canonical WinUI shell will join the zip once the CI publish step is
+fixed (separate PR).
 
 ## Common issues
 

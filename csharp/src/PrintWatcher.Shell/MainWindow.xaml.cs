@@ -14,7 +14,30 @@ public sealed partial class MainWindow : Window
         Title = "PrintWatcher";
         SystemBackdrop = new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt };
         ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+
+        // Closing → hide to tray. Only the tray's Quit menu calls
+        // Application.Current.Exit(); the X button just stows the window.
+        AppWindow.Closing += OnAppWindowClosing;
+
         ContentFrame.Navigate(typeof(DashboardPage));
+    }
+
+    private static void OnAppWindowClosing(
+        Microsoft.UI.Windowing.AppWindow sender,
+        Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        try
+        {
+            // Tray Quit path — let the close go through.
+            if (App.Current.ShuttingDown) return;
+            args.Cancel = true;
+            App.Current.NotifyIcon?.HideWindow();
+        }
+        catch (InvalidOperationException)
+        {
+            // App.Current isn't ready during very-late shutdown — fall through.
+        }
     }
 
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
