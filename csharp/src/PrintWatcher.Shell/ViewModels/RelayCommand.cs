@@ -45,7 +45,7 @@ public sealed class AsyncRelayCommand : ICommand
     public async void Execute(object? parameter)
     {
         _running = true;
-        Raise();
+        NotifyCanExecuteChanged();
         try
         {
             await _execute().ConfigureAwait(true);
@@ -53,9 +53,10 @@ public sealed class AsyncRelayCommand : ICommand
         finally
         {
             _running = false;
-            Raise();
+            NotifyCanExecuteChanged();
         }
     }
 
-    private void Raise() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+    public void NotifyCanExecuteChanged() =>
+        CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }

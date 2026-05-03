@@ -68,6 +68,24 @@ public sealed class ApiClient : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<PendingItemDto>> GetPendingAsync(CancellationToken ct = default)
+    {
+        var rows = await GetAsync<IReadOnlyList<PendingItemDto>>("/api/pending", ct).ConfigureAwait(false);
+        return rows ?? Array.Empty<PendingItemDto>();
+    }
+
+    public async Task PrintPendingAsync(CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsync("/api/pending/print", content: null, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task SkipPendingAsync(CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsync("/api/pending/skip", content: null, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     public Task<PreferencesDto?> GetPreferencesAsync(CancellationToken ct = default) =>
         GetAsync<PreferencesDto>("/api/preferences", ct);
 
