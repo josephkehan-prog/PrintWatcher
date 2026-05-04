@@ -6,7 +6,11 @@ namespace PrintWatcher.Shell.Services;
 /// <remarks>
 /// Mirrors the Python <c>THEMES</c> dict in <c>printwatcher/core.py</c>. Keep
 /// the two in sync; the <c>/api/themes</c> endpoint returns the Python-side
-/// dict and the shell's tests assert byte-for-byte parity.
+/// dict and the shell's tests assert byte-for-byte parity. The
+/// <c>Translucent</c> flag is shell-only — when set, the theme service
+/// renders the panel/log-bg surfaces with reduced opacity so the window's
+/// acrylic backdrop shows through, and <c>MainWindow</c> swaps in
+/// <c>DesktopAcrylicBackdrop</c> instead of Mica.
 /// </remarks>
 public sealed record ThemePalette(
     string Bg,
@@ -17,7 +21,8 @@ public sealed record ThemePalette(
     string Ok,
     string Err,
     string LogText,
-    string BtnHover);
+    string BtnHover,
+    bool Translucent = false);
 
 public static class ThemeRegistry
 {
@@ -54,7 +59,8 @@ public static class ThemeRegistry
                 Bg: "#f2f4f8", Panel: "#ffffff", LogBg: "#fafbfc",
                 Text: "#1d1d1f", Muted: "#6e6e73",
                 Ok: "#0a84ff", Err: "#ff453a",
-                LogText: "#1d1d1f", BtnHover: "#e5e5ea"),
+                LogText: "#1d1d1f", BtnHover: "#e5e5ea",
+                Translucent: true),
         };
 
     public static ThemePalette Resolve(string name) =>

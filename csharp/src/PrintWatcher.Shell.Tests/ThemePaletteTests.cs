@@ -33,6 +33,22 @@ public sealed class ThemePaletteTests
         fallback.Should().Be(ThemeRegistry.Resolve(ThemeRegistry.Default));
     }
 
+    [Fact]
+    public void GlassTheme_IsTranslucent()
+    {
+        ThemeRegistry.Resolve("Glass").Translucent.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Ocean")]
+    [InlineData("Forest")]
+    [InlineData("Indigo")]
+    [InlineData("Blush")]
+    public void OpaqueThemes_AreNotTranslucent(string name)
+    {
+        ThemeRegistry.Resolve(name).Translucent.Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("#006494", 0x00, 0x64, 0x94)]
     [InlineData("#abc", 0xaa, 0xbb, 0xcc)]
