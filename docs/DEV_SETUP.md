@@ -142,27 +142,29 @@ pyinstaller printwatcher.spec --noconfirm
 pyinstaller printwatcher-cli.spec --noconfirm
 # → dist\PrintWatcher-cli.exe
 
-# 4. C# shell — local-only for now; CI publish is a tracked follow-up
+# 4. C# shell (self-contained, win-x64)
 dotnet publish csharp\src\PrintWatcher.Shell\PrintWatcher.Shell.csproj `
   --configuration Release `
+  --runtime win-x64 `
+  --self-contained true `
   -p:Platform=x64 `
-  -p:RuntimeIdentifier=win-x64 `
+  -p:WindowsAppSDKSelfContained=true `
   --output csharp\publish\shell
+# → csharp\publish\shell\PrintWatcher.exe + ~200 MB of bundled runtime DLLs
+#   (.NET 8, Windows App SDK, WinUI 3 — no system prerequisites on the user's machine).
 ```
 
-`dotnet publish` for unpackaged WinUI 3 + Windows App SDK 1.5 is currently
-failing in our CI matrix with an opaque `exit code 1`. It works fine
-locally on a real Windows dev box, so the recommended dev path is:
+`-p:Platform=x64` is mandatory: `<Platforms>x64</Platforms>` in the csproj
+only declares the supported list — the publish target still defaults to
+AnyCPU and `Microsoft.WindowsAppSDK.SelfContained.targets` explicitly
+fails without it. Don't add `-p:EnableMsixTooling=false` or
+`-p:GenerateAppxPackageOnBuild=false`; they break manifest processing
+for unpackaged builds.
 
-1. Build/run via `dotnet run` for development (see Terminal 2 above).
-2. Publish locally on Windows when you need a deployable folder, copy
-   `PrintWatcher-backend.exe` next to the published `PrintWatcher.exe`,
-   and zip the folder.
-
-The CI release zip currently ships only the legacy Tk binary
-(`PrintWatcher-legacy.exe`), the CLI exe, and the backend exe. The
-canonical WinUI shell will join the zip once the CI publish step is
-fixed (separate PR).
+Single-file publish (`-p:PublishSingleFile=true`) doesn't pack the Windows
+App SDK's native components cleanly yet — leave it off. The release zip
+ships the full publish folder; the shell launches `PrintWatcher-backend.exe`
+from the same folder by relative path.
 
 ## Common issues
 
