@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using PrintWatcher.Shell.Pages;
+using PrintWatcher.Shell.Services;
 
 namespace PrintWatcher.Shell;
 
@@ -12,15 +13,27 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "PrintWatcher";
-        SystemBackdrop = new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
-        // Closing → hide to tray. Only the tray's Quit menu calls
-        // Application.Current.Exit(); the X button just stows the window.
-        AppWindow.Closing += OnAppWindowClosing;
+        // Backdrop picks itself based on the active palette: translucent
+        // themes (Glass) get DesktopAcrylicBackdrop so window content blurs
+        // through panel surfaces; everything else stays on Mica.
+        var theme = App.Current.Theme;
+        ApplyBackdrop(ThemeRegistry.Resolve(theme.Current));
+        theme.ThemeChanged += OnThemeChanged;
 
+        AppWindow.Closing += OnAppWindowClosing;
         ContentFrame.Navigate(typeof(DashboardPage));
+    }
+
+    private void OnThemeChanged(ThemePalette palette) => ApplyBackdrop(palette);
+
+    private void ApplyBackdrop(ThemePalette palette)
+    {
+        SystemBackdrop = palette.Translucent
+            ? new DesktopAcrylicBackdrop()
+            : new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt };
     }
 
     private static void OnAppWindowClosing(
