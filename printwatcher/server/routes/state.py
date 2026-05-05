@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import platform
+
 from fastapi import APIRouter, Depends
 
 from printwatcher.core import APP_VERSION, list_printers, load_preferences
@@ -14,6 +16,7 @@ from printwatcher.server.dto import (
     PrintOptionsDto,
     StateDto,
     StatsDto,
+    VersionDto,
 )
 from printwatcher.server.state import AppState, get_state
 
@@ -58,11 +61,9 @@ def post_pause(payload: PauseDto, state: AppState = Depends(get_state)) -> Pause
     return PauseDto(paused=state.watcher.is_paused)
 
 
-@router.get("/version")
-def get_version(state: AppState = Depends(get_state)) -> dict[str, str]:
-    import platform
-    return {
-        "app": state.app_version or APP_VERSION,
-        "server": "fastapi",
-        "python": platform.python_version(),
-    }
+@router.get("/version", response_model=VersionDto)
+def get_version(state: AppState = Depends(get_state)) -> VersionDto:
+    return VersionDto(
+        app=state.app_version or APP_VERSION,
+        python=platform.python_version(),
+    )

@@ -18,33 +18,41 @@ from printwatcher.server.websocket import router as ws_router
 log = logging.getLogger("printwatcher.server.app")
 
 
-def _wire_subscriptions(watcher: WatcherCore, events: EventBus) -> None:
-    """Forward every WatcherCore event onto the bus as JSON frames."""
+class WatcherEventForwarder:
+    """Forward every WatcherCore event onto the EventBus as JSON frames.
 
-    def on_log(line: str) -> None:
-        events.publish({
+    Extracted as a class (not closures) so each handler is testable in
+    isolation and the wiring step has no hidden state.
+    """
+
+    def __init__(self, events: EventBus) -> None:
+        self._events = events
+
+    def attach(self, watcher: WatcherCore) -> None:
+        watcher.subscribe_log(self.on_log)
+        watcher.subscribe_stat(self.on_stat)
+        watcher.subscribe_history(self.on_history)
+        watcher.subscribe_pending(self.on_pending)
+
+    def on_log(self, line: str) -> None:
+        self._events.publish({
             "type": "log",
             "ts": datetime.now().isoformat(timespec="seconds"),
             "level": "info",
             "line": line,
         })
 
-    def on_stat(key: str, delta: int, value: int) -> None:
-        events.publish({"type": "stat", "key": key, "delta": delta, "value": value})
+    def on_stat(self, key: str, delta: int, value: int) -> None:
+        self._events.publish({"type": "stat", "key": key, "delta": delta, "value": value})
 
-    def on_history(record: PrintRecord) -> None:
-        events.publish({"type": "history", "record": record.__dict__})
+    def on_history(self, record: PrintRecord) -> None:
+        self._events.publish({"type": "history", "record": record.__dict__})
 
-    def on_pending(items) -> None:
-        events.publish({
+    def on_pending(self, items) -> None:
+        self._events.publish({
             "type": "pending",
             "items": [{"path": str(p), "name": p.name} for p in items],
         })
-
-    watcher.subscribe_log(on_log)
-    watcher.subscribe_stat(on_stat)
-    watcher.subscribe_history(on_history)
-    watcher.subscribe_pending(on_pending)
 
 
 def create_app(
@@ -64,7 +72,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         events.bind_loop(asyncio.get_running_loop())
-        _wire_subscriptions(watcher, events)
+        WatcherEventForwarder(events).attach(watcher)
         if auto_start:
             watcher.start()
         try:

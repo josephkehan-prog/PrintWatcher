@@ -6,10 +6,7 @@
     xmlns:vm="using:PrintWatcher.Shell.ViewModels"
     xmlns:controls="using:PrintWatcher.Shell.Controls">
     <Page.Resources>
-        <Style x:Key="StatTileStyle" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Padding" Value="20,16" />
+        <Style x:Key="StatTileStyle" TargetType="Border" BasedOn="{StaticResource GroupCardStyle}">
             <Setter Property="MinWidth" Value="160" />
             <Setter Property="MinHeight" Value="92" />
         </Style>
@@ -18,15 +15,10 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{ThemeResource TextBrush}" />
         </Style>
-        <Style x:Key="StatLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{ThemeResource MutedBrush}" />
-            <Setter Property="CharacterSpacing" Value="80" />
-        </Style>
     </Page.Resources>
 
     <ScrollViewer>
-        <StackPanel Padding="32,24,32,32" Spacing="20">
+        <StackPanel Padding="{StaticResource PageContentPadding}" Spacing="20">
             <Grid ColumnSpacing="24">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -35,9 +27,7 @@
                 <StackPanel Grid.Column="0" Spacing="2">
                     <TextBlock
                         Text="PrintWatcher"
-                        FontSize="32"
-                        FontWeight="Light"
-                        Foreground="{ThemeResource TextBrush}" />
+                        Style="{StaticResource PageTitleStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <controls:StatusPip
                             VerticalAlignment="Center"
@@ -70,7 +60,7 @@
                             <StackPanel>
                                 <TextBlock
                                     Text="{x:Bind Label}"
-                                    Style="{StaticResource StatLabelStyle}" />
+                                    Style="{StaticResource SectionLabelStyle}" />
                                 <TextBlock
                                     Text="{x:Bind Value, Mode=OneWay}"
                                     Style="{StaticResource StatNumberStyle}" />
@@ -84,11 +74,15 @@
 
             <Border
                 Background="{ThemeResource LogBgBrush}"
-                CornerRadius="14"
+                CornerRadius="{StaticResource CardRadius}"
                 Padding="16"
                 MinHeight="280">
-                <StackPanel Spacing="8">
-                    <Grid>
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -96,33 +90,44 @@
                         <TextBlock
                             Grid.Column="0"
                             Text="ACTIVITY"
-                            Style="{StaticResource StatLabelStyle}" />
+                            Style="{StaticResource SectionLabelStyle}" />
                         <TextBlock
                             Grid.Column="1"
                             Text="Drop files anywhere on this page to print"
-                            Style="{StaticResource StatLabelStyle}" />
+                            Style="{StaticResource SectionLabelStyle}" />
                     </Grid>
-                    <ListView
-                        ItemsSource="{x:Bind ViewModel.Log}"
-                        SelectionMode="None"
-                        IsItemClickEnabled="False">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="Padding" Value="0,2" />
-                                <Setter Property="MinHeight" Value="0" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:LogLine">
-                                <TextBlock
-                                    FontFamily="Consolas, Cascadia Code, monospace"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource LogTextBrush}"
-                                    Text="{x:Bind Line}" />
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </StackPanel>
+                    <Grid Grid.Row="1">
+                        <ListView
+                            x:Name="ActivityLog"
+                            ItemsSource="{x:Bind ViewModel.Log}"
+                            SelectionMode="None"
+                            IsItemClickEnabled="False"
+                            Visibility="{x:Bind LogToVisible(ViewModel.Log.Count), Mode=OneWay}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="0,2" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LogLine">
+                                    <TextBlock
+                                        Style="{StaticResource LogTextStyle}"
+                                        Text="{x:Bind Line}" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock
+                            Text="No activity yet. Drop a file or wait for the watcher to pick something up."
+                            Style="{StaticResource SectionLabelStyle}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap"
+                            MaxWidth="420"
+                            Visibility="{x:Bind LogToCollapsed(ViewModel.Log.Count), Mode=OneWay}" />
+                    </Grid>
+                </Grid>
             </Border>
         </StackPanel>
     </ScrollViewer>

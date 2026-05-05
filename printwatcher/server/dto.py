@@ -104,3 +104,9 @@ class ToolRunDto(BaseModel):
 class ToolRunStartedDto(BaseModel):
     run_id: str
     label: str
+
+
+class VersionDto(BaseModel):
+    app: str
+    server: str = "fastapi"
+    python: str

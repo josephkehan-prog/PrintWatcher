@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Microsoft.UI.Xaml;
@@ -21,7 +22,23 @@ public sealed partial class DashboardPage : Page
         AllowDrop = true;
         DragOver += OnDragOver;
         Drop += OnDrop;
+        ViewModel.Log.CollectionChanged += OnLogCollectionChanged;
     }
+
+    private void OnLogCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        Bindings.Update();
+        if (e.Action != NotifyCollectionChangedAction.Add) return;
+        if (ActivityLog.Items.Count == 0) return;
+        var last = ActivityLog.Items[ActivityLog.Items.Count - 1];
+        ActivityLog.ScrollIntoView(last);
+    }
+
+    /// <summary>x:Bind helper — show the log when there is at least one line.</summary>
+    public Visibility LogToVisible(int count) => count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>x:Bind helper — show the empty-state placeholder when the log is empty.</summary>
+    public Visibility LogToCollapsed(int count) => count > 0 ? Visibility.Collapsed : Visibility.Visible;
 
     public DashboardViewModel ViewModel { get; }
 
