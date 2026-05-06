@@ -5,9 +5,13 @@ SumatraPDF executable. ``printwatcher.core.discover_paths()`` reads those
 constants from this file to keep both entrypoints in sync.
 """
 
+import json
 import logging
+import os
 import subprocess
 import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pystray
@@ -31,6 +35,46 @@ paused = threading.Event()
 _STABLE_CHECKS = 3
 _STABLE_INTERVAL_SEC = 1.0
 _ASSET_ICON = Path(__file__).parent / "assets" / "printwatcher.png"
+_BACKEND_TIMEOUT_SEC = 1.0
+
+
+def _server_json_path() -> Path:
+    base = os.environ.get("LOCALAPPDATA")
+    if base:
+        return Path(base) / "PrintWatcher" / "server.json"
+    return Path.home() / ".printwatcher" / "server.json"
+
+
+def _read_backend_endpoint() -> tuple[str, str] | None:
+    """Return ``(url, token)`` if a running backend is discoverable, else ``None``."""
+    try:
+        info = json.loads(_server_json_path().read_text(encoding="utf-8"))
+        return f"http://127.0.0.1:{int(info['port'])}", str(info["token"])
+    except (FileNotFoundError, KeyError, ValueError, OSError):
+        return None
+
+
+def _sync_pause_to_backend(paused_value: bool) -> None:
+    """Best-effort POST /api/pause; silently no-op when backend isn't running."""
+    endpoint = _read_backend_endpoint()
+    if endpoint is None:
+        return
+    base_url, token = endpoint
+    req = urllib.request.Request(
+        f"{base_url}/api/pause",
+        data=json.dumps({"paused": paused_value}).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        # URL is built from our own discovery file pointing at 127.0.0.1; not user input.
+        with urllib.request.urlopen(req, timeout=_BACKEND_TIMEOUT_SEC):  # noqa: S310  # nosec B310
+            pass
+    except (urllib.error.URLError, OSError) as exc:
+        log.debug("backend pause sync skipped: %s", exc)
 
 
 def wait_until_stable(
@@ -122,6 +166,14 @@ def main() -> None:
             paused.set()
             icon.icon = _load_icon(active=False)
             icon.title = "PrintWatcher — Paused"
+        # Best-effort sync to backend (if running) so the WinUI shell stays
+        # consistent. Runs off-thread so a slow/unreachable backend can't
+        # freeze the menu.
+        threading.Thread(
+            target=_sync_pause_to_backend,
+            args=(paused.is_set(),),
+            daemon=True,
+        ).start()
 
     def open_folder(_icon, _item) -> None:
         subprocess.Popen(["explorer", str(WATCH_DIR)])

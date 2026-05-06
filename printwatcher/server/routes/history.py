@@ -35,7 +35,7 @@ def list_history(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"invalid regex: {exc}",
-            )
+            ) from exc
         records = [r for r in records if pattern.search(r.filename) or pattern.search(r.submitter)]
 
     if from_:

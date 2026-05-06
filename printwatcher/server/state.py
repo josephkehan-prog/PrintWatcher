@@ -18,8 +18,8 @@ if TYPE_CHECKING:  # avoid runtime import cycles for typing only
 
 @dataclass
 class AppState:
-    watcher: "WatcherCore"
-    events: "EventBus"
+    watcher: WatcherCore
+    events: EventBus
     token: str
     app_version: str = ""
     extra: dict = field(default_factory=dict)

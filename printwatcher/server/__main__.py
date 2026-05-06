@@ -8,11 +8,11 @@ WinUI shell can discover the port.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
 import socket
-import sys
 from pathlib import Path
 
 import uvicorn
@@ -126,10 +126,8 @@ def main(argv: list[str] | None = None) -> int:
         server.run()
     finally:
         if discovery_path is not None and discovery_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 discovery_path.unlink()
-            except OSError:
-                pass
 
     return 0
 

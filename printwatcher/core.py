@@ -19,10 +19,10 @@ import re
 import subprocess
 import threading
 import time
-from dataclasses import asdict, dataclass, field, replace
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer

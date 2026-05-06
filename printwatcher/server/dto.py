@@ -24,7 +24,7 @@ class PrintOptionsDto(BaseModel):
     color: Color | None = None
 
     @classmethod
-    def from_core(cls, options: PrintOptions) -> "PrintOptionsDto":
+    def from_core(cls, options: PrintOptions) -> PrintOptionsDto:
         return cls(
             printer=options.printer,
             copies=options.copies,
@@ -53,7 +53,7 @@ class PrintRecordDto(BaseModel):
     submitter: str = ""
 
     @classmethod
-    def from_core(cls, record: PrintRecord) -> "PrintRecordDto":
+    def from_core(cls, record: PrintRecord) -> PrintRecordDto:
         return cls(**record.__dict__)
 
 
