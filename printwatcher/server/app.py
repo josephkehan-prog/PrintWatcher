@@ -22,17 +22,30 @@ class WatcherEventForwarder:
     """Forward every WatcherCore event onto the EventBus as JSON frames.
 
     Extracted as a class (not closures) so each handler is testable in
-    isolation and the wiring step has no hidden state.
+    isolation and the wiring step has no hidden state. ``attach`` collects
+    the unsubscribe callables WatcherCore returns; ``detach`` calls them so
+    repeated lifespan cycles don't accumulate duplicate subscribers.
     """
 
     def __init__(self, events: EventBus) -> None:
         self._events = events
+        self._unsubscribers: list = []
 
     def attach(self, watcher: WatcherCore) -> None:
-        watcher.subscribe_log(self.on_log)
-        watcher.subscribe_stat(self.on_stat)
-        watcher.subscribe_history(self.on_history)
-        watcher.subscribe_pending(self.on_pending)
+        self._unsubscribers = [
+            watcher.subscribe_log(self.on_log),
+            watcher.subscribe_stat(self.on_stat),
+            watcher.subscribe_history(self.on_history),
+            watcher.subscribe_pending(self.on_pending),
+        ]
+
+    def detach(self) -> None:
+        for unsub in self._unsubscribers:
+            try:
+                unsub()
+            except Exception:  # pragma: no cover - best-effort teardown
+                log.exception("forwarder detach failed")
+        self._unsubscribers = []
 
     def on_log(self, line: str) -> None:
         self._events.publish({
@@ -72,12 +85,14 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         events.bind_loop(asyncio.get_running_loop())
-        WatcherEventForwarder(events).attach(watcher)
+        forwarder = WatcherEventForwarder(events)
+        forwarder.attach(watcher)
         if auto_start:
             watcher.start()
         try:
             yield
         finally:
+            forwarder.detach()
             if auto_start:
                 watcher.stop()
 

@@ -460,13 +460,20 @@ class PrinterWorker(threading.Thread):
             return tuple(self._inflight)
 
     def submit(self, path: Path) -> None:
+        # Normalize so different Path forms of the same physical file
+        # (absolute vs relative, double-slash, case-folded on Windows)
+        # dedupe through the inflight set.
+        try:
+            canonical = path.resolve()
+        except OSError:
+            canonical = path
         with self._lock:
-            if path in self._inflight:
+            if canonical in self._inflight:
                 return
-            self._inflight.add(path)
-        self._queue.put(path)
+            self._inflight.add(canonical)
+        self._queue.put(canonical)
         self._stat("pending", 1)
-        self._log(f"queued: {path.name}")
+        self._log(f"queued: {canonical.name}")
 
     def run(self) -> None:
         while True:
@@ -762,14 +769,11 @@ class WatcherCore:
         self._options_lock = threading.Lock()
 
         self._history = HistoryStore(history_path or default_history_path())
+        self._today_iso = datetime.now().date().isoformat()
+        self._reseed_today_from_history()
         recent = self._history.recent()
         self._stats.printed = sum(1 for r in recent if r.status == "ok")
         self._stats.errors = sum(1 for r in recent if r.status == "error")
-        today_iso = datetime.now().date().isoformat()
-        self._stats.today = sum(
-            1 for r in recent
-            if r.status == "ok" and r.timestamp.startswith(today_iso)
-        )
 
         self._log_subs: list[_LogSub] = []
         self._stat_subs: list[_StatSub] = []
@@ -920,11 +924,38 @@ class WatcherCore:
 
     def _dispatch_history(self, record: PrintRecord) -> None:
         self._history.append(record)
+        self._maybe_bump_today(record)
         for cb in tuple(self._history_subs):
             try:
                 cb(record)
             except Exception:  # pragma: no cover - subscriber bug
                 log.exception("history subscriber raised")
+
+    def _maybe_bump_today(self, record: PrintRecord) -> None:
+        """Advance ``stats['today']`` when a successful print lands today.
+
+        Also handles midnight rollover: if the calendar date has changed
+        since the last seed, ``today`` is recomputed from history first so
+        yesterday's count doesn't carry over.
+        """
+        if record.status != "ok":
+            return
+        current_iso = datetime.now().date().isoformat()
+        if current_iso != self._today_iso:
+            self._today_iso = current_iso
+            self._reseed_today_from_history()
+        if record.timestamp.startswith(self._today_iso):
+            self._dispatch_stat("today", 1)
+
+    def _reseed_today_from_history(self) -> None:
+        """Recount ``today`` from on-disk history. Used at startup and on
+        midnight rollover."""
+        count = sum(
+            1 for r in self._history.recent()
+            if r.status == "ok" and r.timestamp.startswith(self._today_iso)
+        )
+        with self._stats_lock:
+            self._stats.today = count
 
     def _dispatch_pending(self) -> None:
         items = self._worker.inflight_paths
