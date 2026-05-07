@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from printwatcher.core import load_preferences, save_preferences
+from printwatcher.core import save_preferences
 from printwatcher.server.auth import require_token
 from printwatcher.server.dto import PreferencesDto
+from printwatcher.server.state import AppState, get_state
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
 
 
 @router.get("/preferences", response_model=PreferencesDto)
-def get_prefs() -> PreferencesDto:
-    raw = load_preferences()
+def get_prefs(state: AppState = Depends(get_state)) -> PreferencesDto:
+    raw = state.get_preferences()
     return PreferencesDto(
         theme=raw.get("theme", "Ocean"),
         hold_mode=bool(raw.get("hold_mode", False)),
@@ -23,8 +24,12 @@ def get_prefs() -> PreferencesDto:
 
 
 @router.put("/preferences", response_model=PreferencesDto)
-def put_prefs(payload: PreferencesDto) -> PreferencesDto:
-    raw = load_preferences()
+def put_prefs(
+    payload: PreferencesDto,
+    state: AppState = Depends(get_state),
+) -> PreferencesDto:
+    raw = state.get_preferences()
     raw.update(payload.model_dump())
     save_preferences(raw)
+    state.invalidate_preferences(fresh=raw)
     return payload

@@ -315,8 +315,13 @@ def _color_label(value: str | None) -> str:
 # Printer enumeration (Windows PowerShell)
 # ---------------------------------------------------------------------------
 
-def list_printers() -> list[str]:
-    """Return Windows printer names via PowerShell. Empty list on failure."""
+_PRINTERS_TTL_SEC = 30.0
+_printers_cache: tuple[float, list[str]] | None = None
+_printers_cache_lock = threading.Lock()
+
+
+def _list_printers_uncached() -> list[str]:
+    """Cold-path PowerShell enumeration. Use ``list_printers()`` for callers."""
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "(Get-Printer).Name"],
@@ -331,6 +336,35 @@ def list_printers() -> list[str]:
         log.warning("Get-Printer exit=%s stderr=%s", result.returncode, result.stderr.strip())
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def list_printers() -> list[str]:
+    """Return Windows printer names via PowerShell, with a 30 s TTL cache.
+
+    PowerShell cold-start is 200–500 ms on Windows; the WinUI shell hits
+    /api/state on focus and after every mutation, which would re-shell
+    every time without caching. Printers don't appear/disappear at sub-
+    minute resolution, so 30 s is comfortably under any human-visible
+    staleness threshold.
+    """
+    global _printers_cache
+    now = time.monotonic()
+    with _printers_cache_lock:
+        if _printers_cache is not None:
+            cached_at, names = _printers_cache
+            if now - cached_at < _PRINTERS_TTL_SEC:
+                return list(names)
+    names = _list_printers_uncached()
+    with _printers_cache_lock:
+        _printers_cache = (now, list(names))
+    return names
+
+
+def _invalidate_printers_cache() -> None:
+    """Test-only hook to drop the cache between cases."""
+    global _printers_cache
+    with _printers_cache_lock:
+        _printers_cache = None
 
 
 # ---------------------------------------------------------------------------

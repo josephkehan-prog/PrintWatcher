@@ -6,7 +6,7 @@ import platform
 
 from fastapi import APIRouter, Depends
 
-from printwatcher.core import APP_VERSION, list_printers, load_preferences
+from printwatcher.core import APP_VERSION, list_printers
 from printwatcher.server.auth import require_token
 from printwatcher.server.dto import (
     PauseDto,
@@ -37,7 +37,7 @@ def _printers_snapshot() -> PrintersDto:
 
 @router.get("/state", response_model=StateDto)
 def get_state_snapshot(state: AppState = Depends(get_state)) -> StateDto:
-    prefs = load_preferences()
+    prefs = state.get_preferences()
     return StateDto(
         version=state.app_version or APP_VERSION,
         stats=StatsDto(**state.watcher.stats),
