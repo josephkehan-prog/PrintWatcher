@@ -97,9 +97,12 @@ def test_inflight_dedup_normalizes_paths(tmp_path) -> None:
     target.write_bytes(b"%PDF-1.4 fake")
 
     canonical = target.resolve()
-    # Same physical file, but a non-canonical Path form (double slash).
-    drift = Path(str(target).replace("/", "//", 1))
+    # Same physical file, but a non-canonical Path form (a parent-traversal
+    # segment that pathlib keeps verbatim and only resolve() collapses).
+    # Cross-platform: works on POSIX and Windows alike.
+    drift = target.parent / "sub" / ".." / target.name
     assert canonical != drift  # baseline: they compare unequal
+    assert drift.resolve() == canonical  # but resolve to same file
 
     worker.submit(canonical)
     worker.submit(drift)
