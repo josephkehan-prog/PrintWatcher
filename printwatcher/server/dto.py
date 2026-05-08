@@ -123,3 +123,16 @@ class VersionDto(BaseModel):
     app: str
     server: str = "fastapi"
     python: str
+
+
+class InboxHealthDto(BaseModel):
+    watch_dir: str
+    inbox_count: int = 0
+    inbox_bytes: int = 0
+    printed_count: int = 0
+    printed_bytes: int = 0
+    skipped_count: int = 0
+    skipped_bytes: int = 0
+    scheduled_count: int = 0
+    scheduled_bytes: int = 0
+    total_bytes: int = 0

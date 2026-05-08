@@ -73,6 +73,51 @@ public sealed class SettingsViewModel : ObservableObject
 
     public IReadOnlyList<string> BackendLog { get; private set; } = Array.Empty<string>();
 
+    private string _logFilter = "";
+    private string _logLevel = "Any";  // "Any" | "info" | "warn" | "error"
+
+    public string LogFilter
+    {
+        get => _logFilter;
+        set
+        {
+            if (SetField(ref _logFilter, value ?? ""))
+                Raise(nameof(FilteredLog));
+        }
+    }
+
+    public string LogLevel
+    {
+        get => _logLevel;
+        set
+        {
+            if (SetField(ref _logLevel, value ?? "Any"))
+                Raise(nameof(FilteredLog));
+        }
+    }
+
+    public IReadOnlyList<string> LogLevels { get; } = new[] { "Any", "info", "warn", "error" };
+
+    /// <summary>Client-side filter view over <see cref="BackendLog"/>.</summary>
+    public IReadOnlyList<string> FilteredLog
+    {
+        get
+        {
+            var needle = _logFilter;
+            var levelToken = string.Equals(_logLevel, "Any", StringComparison.OrdinalIgnoreCase) ? null : _logLevel;
+            if (string.IsNullOrEmpty(needle) && levelToken is null) return BackendLog;
+
+            return BackendLog.Where(line =>
+            {
+                if (!string.IsNullOrEmpty(needle) && line.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+                if (levelToken is not null && line.IndexOf(levelToken, StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+                return true;
+            }).ToArray();
+        }
+    }
+
     public RelayCommand? ShowBackendLogCommand { get; }
 
     /// <summary>
@@ -100,6 +145,7 @@ public sealed class SettingsViewModel : ObservableObject
         if (_readLogTail is null) return;
         BackendLog = _readLogTail();
         Raise(nameof(BackendLog));
+        Raise(nameof(FilteredLog));
     }
 
     private async Task SaveAsync()

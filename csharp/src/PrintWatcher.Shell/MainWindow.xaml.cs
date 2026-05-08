@@ -53,6 +53,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Ctrl+Shift+P toggles pause from any page. Reuses the dashboard's
+    /// existing TogglePauseCommand so the WS frame fires and the pause
+    /// state stays consistent with the button + tray + backend.
+    /// </summary>
+    private void OnTogglePauseAccelerator(
+        Microsoft.UI.Xaml.Input.KeyboardAccelerator sender,
+        Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        var cmd = App.Current.Shell?.Dashboard?.TogglePauseCommand;
+        if (cmd is not null && cmd.CanExecute(null))
+        {
+            cmd.Execute(null);
+            args.Handled = true;
+        }
+    }
+
     private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item) return;

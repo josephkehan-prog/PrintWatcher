@@ -21,6 +21,7 @@ def list_history(
     regex: str | None = Query(default=None),
     from_: str | None = Query(default=None, alias="from"),
     to: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
 ) -> list[PrintRecordDto]:
     records = state.watcher.history.recent()
 
@@ -42,6 +43,8 @@ def list_history(
         records = [r for r in records if r.timestamp >= from_]
     if to:
         records = [r for r in records if r.timestamp <= to]
+    if status_filter:
+        records = [r for r in records if r.status == status_filter]
 
     return [PrintRecordDto.from_core(r) for r in records[:limit]]
 

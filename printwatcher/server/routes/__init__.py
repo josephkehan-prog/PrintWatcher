@@ -2,6 +2,7 @@
 
 from printwatcher.server.routes import (
     history,
+    inbox,
     options,
     pending,
     prefs,
@@ -23,5 +24,6 @@ ALL_ROUTERS = (
     themes.router,
     tools.router,
     upload.router,
+    inbox.router,
     shutdown.router,
 )

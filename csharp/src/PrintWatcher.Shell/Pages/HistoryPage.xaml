@@ -10,6 +10,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -44,8 +45,33 @@
                 Command="{x:Bind ViewModel.ClearCommand}" />
         </Grid>
 
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <CalendarDatePicker
+                Grid.Column="0"
+                PlaceholderText="From"
+                Date="{x:Bind ViewModel.From, Mode=TwoWay}" />
+            <CalendarDatePicker
+                Grid.Column="1"
+                PlaceholderText="To"
+                Date="{x:Bind ViewModel.To, Mode=TwoWay}" />
+            <ComboBox
+                Grid.Column="2"
+                SelectedItem="{x:Bind ViewModel.StatusKind, Mode=TwoWay}"
+                MinWidth="120">
+                <x:String>Any</x:String>
+                <x:String>ok</x:String>
+                <x:String>error</x:String>
+            </ComboBox>
+        </Grid>
+
         <Border
-            Grid.Row="2"
+            Grid.Row="3"
             Background="{ThemeResource LogBgBrush}"
             CornerRadius="{StaticResource CardRadius}"
             Padding="0">
@@ -86,6 +112,10 @@
                                         Text="Reprint"
                                         Icon="Print"
                                         Click="OnReprintClicked" />
+                                    <MenuFlyoutItem
+                                        Text="Open printer queue"
+                                        Icon="OpenLocal"
+                                        Click="OnOpenPrinterQueueClicked" />
                                 </MenuFlyout>
                             </Grid.ContextFlyout>
                             <TextBlock Grid.Column="0" Text="{x:Bind Timestamp}" FontFamily="Consolas, Cascadia Code, monospace" />

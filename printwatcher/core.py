@@ -868,6 +868,85 @@ class WatcherCore:
     def pending_paths(self) -> tuple[Path, ...]:
         return self._worker.inflight_paths
 
+    _INBOX_HEALTH_TTL_SEC = 30.0
+
+    def inbox_health(self) -> dict[str, int | str]:
+        """Snapshot disk-usage + file counts for the watched inbox.
+
+        Walks ``watch_dir`` plus the three reserved top-levels
+        (_printed, _skipped, _scheduled) and returns total bytes + per-bucket
+        file counts. Cached behind a 30 s TTL — the dashboard tile polls
+        whenever the page is opened, and a fresh stat-walk on every poll
+        would hammer a OneDrive folder. ``os.scandir`` is used directly
+        for speed; only top-level + one nested level (per-submitter) under
+        each reserved root is walked, never the whole tree.
+        """
+        now = time.monotonic()
+        cached = getattr(self, "_inbox_health_cache", None)
+        if cached is not None and now - cached[0] < self._INBOX_HEALTH_TTL_SEC:
+            return dict(cached[1])
+
+        import contextlib
+
+        def _count_and_size(root: Path) -> tuple[int, int]:
+            count = 0
+            total = 0
+            if not root.exists():
+                return 0, 0
+            try:
+                for entry in os.scandir(root):
+                    if entry.is_file():
+                        count += 1
+                        with contextlib.suppress(OSError):
+                            total += entry.stat().st_size
+                    elif entry.is_dir():
+                        # one level deep: per-submitter folders under _printed/
+                        with contextlib.suppress(OSError):
+                            for sub in os.scandir(entry.path):
+                                if sub.is_file():
+                                    count += 1
+                                    with contextlib.suppress(OSError):
+                                        total += sub.stat().st_size
+            except OSError:
+                pass
+            return count, total
+
+        printed_count, printed_size = _count_and_size(self._watch_dir / PRINTED_SUBDIR)
+        skipped_count, skipped_size = _count_and_size(self._watch_dir / SKIPPED_SUBDIR)
+        scheduled_count, scheduled_size = _count_and_size(self._watch_dir / SCHEDULED_SUBDIR)
+
+        # Inbox files are everything in watch_dir except reserved subdirs.
+        inbox_count = 0
+        inbox_size = 0
+        if self._watch_dir.exists():
+            try:
+                for entry in os.scandir(self._watch_dir):
+                    if entry.is_file():
+                        inbox_count += 1
+                        with contextlib.suppress(OSError):
+                            inbox_size += entry.stat().st_size
+            except OSError:
+                pass
+
+        snapshot: dict[str, int | str] = {
+            "watch_dir": str(self._watch_dir),
+            "inbox_count": inbox_count,
+            "inbox_bytes": inbox_size,
+            "printed_count": printed_count,
+            "printed_bytes": printed_size,
+            "skipped_count": skipped_count,
+            "skipped_bytes": skipped_size,
+            "scheduled_count": scheduled_count,
+            "scheduled_bytes": scheduled_size,
+            "total_bytes": inbox_size + printed_size + skipped_size + scheduled_size,
+        }
+        self._inbox_health_cache = (now, snapshot)
+        return dict(snapshot)
+
+    def _invalidate_inbox_health(self) -> None:
+        """Test-only hook to drop the cache between cases."""
+        self._inbox_health_cache = None
+
     def reprint(self, record: PrintRecord) -> Path:
         """Re-queue a previously-printed file by copying it back into the inbox.
 

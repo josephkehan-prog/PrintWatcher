@@ -72,6 +72,54 @@
 
             <controls:OptionsPanel />
 
+            <!--
+              Inbox health card. Shows OneDrive folder usage + per-bucket
+              counts. Skipped count goes red when > 0 to surface stale
+              files that need triage.
+            -->
+            <Border Style="{StaticResource GroupCardStyle}">
+                <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="INBOX" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.InboxHealth.WatchDir, Mode=OneWay}"
+                            Foreground="{ThemeResource MutedBrush}"
+                            TextTrimming="CharacterEllipsis"
+                            FontSize="12" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="USED" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.InboxBytesLabel, Mode=OneWay}"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="2">
+                        <TextBlock Text="PRINTED" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.InboxHealth.PrintedCount, Mode=OneWay}"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource TextBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" Spacing="2">
+                        <TextBlock Text="SKIPPED" Style="{StaticResource SectionLabelStyle}" />
+                        <TextBlock
+                            Text="{x:Bind ViewModel.SkippedLabel, Mode=OneWay}"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource ErrBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <Border
                 Background="{ThemeResource LogBgBrush}"
                 CornerRadius="{StaticResource CardRadius}"

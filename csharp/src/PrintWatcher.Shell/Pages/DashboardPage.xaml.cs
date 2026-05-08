@@ -23,6 +23,12 @@ public sealed partial class DashboardPage : Page
         DragOver += OnDragOver;
         Drop += OnDrop;
         ViewModel.Log.CollectionChanged += OnLogCollectionChanged;
+        Loaded += OnLoaded;
+    }
+
+    private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        await ViewModel.RefreshInboxHealthAsync();
     }
 
     private void OnLogCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

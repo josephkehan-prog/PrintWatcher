@@ -20,6 +20,7 @@ namespace PrintWatcher.Shell.Models;
 [JsonSerializable(typeof(PauseDto))]
 [JsonSerializable(typeof(ToolRunRequestDto))]
 [JsonSerializable(typeof(ToolRunStartedDto))]
+[JsonSerializable(typeof(InboxHealthDto))]
 [JsonSerializable(typeof(HelloFrame))]
 [JsonSerializable(typeof(StatFrame))]
 [JsonSerializable(typeof(LogFrame))]

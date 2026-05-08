@@ -53,14 +53,29 @@ public sealed class ApiClient : IDisposable
     }
 
     public async Task<IReadOnlyList<PrintRecordDto>> GetHistoryAsync(
-        string? query = null, string? regex = null, int limit = 200, CancellationToken ct = default)
+        string? query = null,
+        string? regex = null,
+        int limit = 200,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        string? statusFilter = null,
+        CancellationToken ct = default)
     {
         var url = $"/api/history?limit={limit}";
         if (!string.IsNullOrEmpty(query)) url += $"&q={Uri.EscapeDataString(query)}";
         if (!string.IsNullOrEmpty(regex)) url += $"&regex={Uri.EscapeDataString(regex)}";
+        if (from is not null)
+            url += $"&from={Uri.EscapeDataString(from.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}";
+        if (to is not null)
+            url += $"&to={Uri.EscapeDataString(to.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}";
+        if (!string.IsNullOrEmpty(statusFilter))
+            url += $"&status={Uri.EscapeDataString(statusFilter)}";
         var rows = await GetAsync<IReadOnlyList<PrintRecordDto>>(url, ct).ConfigureAwait(false);
         return rows ?? Array.Empty<PrintRecordDto>();
     }
+
+    public Task<InboxHealthDto?> GetInboxHealthAsync(CancellationToken ct = default) =>
+        GetAsync<InboxHealthDto>("/api/inbox/health", ct);
 
     public async Task ClearHistoryAsync(CancellationToken ct = default)
     {

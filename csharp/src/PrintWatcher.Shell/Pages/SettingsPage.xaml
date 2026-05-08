@@ -58,6 +58,21 @@
                         <TextBlock Grid.Column="0" Text="BACKEND LOG" Style="{StaticResource SectionLabelStyle}" VerticalAlignment="Center" />
                         <Button Grid.Column="1" Content="Show tail" Command="{x:Bind ViewModel.ShowBackendLogCommand}" />
                     </Grid>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                            Grid.Column="0"
+                            PlaceholderText="Filter logs (substring)"
+                            Text="{x:Bind ViewModel.LogFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox
+                            Grid.Column="1"
+                            ItemsSource="{x:Bind ViewModel.LogLevels}"
+                            SelectedItem="{x:Bind ViewModel.LogLevel, Mode=TwoWay}"
+                            MinWidth="100" />
+                    </Grid>
                     <Border
                         Background="{ThemeResource LogBgBrush}"
                         CornerRadius="8"
@@ -65,7 +80,7 @@
                         MinHeight="120"
                         MaxHeight="280">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{x:Bind ViewModel.BackendLog, Mode=OneWay}">
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.FilteredLog, Mode=OneWay}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="x:String">
                                         <TextBlock

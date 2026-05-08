@@ -5,6 +5,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
     <Grid>
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator
+                Modifiers="Control,Shift"
+                Key="P"
+                Invoked="OnTogglePauseAccelerator" />
+        </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
             <RowDefinition Height="36" />
             <RowDefinition Height="*" />

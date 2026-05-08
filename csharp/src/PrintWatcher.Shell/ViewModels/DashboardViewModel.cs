@@ -21,6 +21,7 @@ public sealed class DashboardViewModel : ObservableObject
     private bool _paused;
     private string _statusLabel = "Connecting…";
     private PrintOptionsDto _options = new();
+    private InboxHealthDto _inboxHealth = new();
 
     public DashboardViewModel() { /* design-time + tests */ }
 
@@ -28,6 +29,7 @@ public sealed class DashboardViewModel : ObservableObject
     {
         _api = api;
         TogglePauseCommand = new AsyncRelayCommand(TogglePauseAsync);
+        RefreshInboxHealthCommand = new AsyncRelayCommand(RefreshInboxHealthAsync);
     }
 
     public int Printed { get => _printed; private set => SetField(ref _printed, value); }
@@ -64,6 +66,24 @@ public sealed class DashboardViewModel : ObservableObject
 
     public ObservableCollection<LogLine> Log { get; } = new();
     public AsyncRelayCommand? TogglePauseCommand { get; }
+    public AsyncRelayCommand? RefreshInboxHealthCommand { get; }
+
+    public InboxHealthDto InboxHealth
+    {
+        get => _inboxHealth;
+        private set => SetField(ref _inboxHealth, value);
+    }
+
+    public string InboxBytesLabel => HumanizeBytes(InboxHealth.TotalBytes);
+
+    public string SkippedLabel => InboxHealth.SkippedCount switch
+    {
+        0 => "0 skipped",
+        1 => "1 skipped",
+        _ => $"{InboxHealth.SkippedCount} skipped",
+    };
+
+    public bool HasSkipped => InboxHealth.SkippedCount > 0;
 
     public void ApplySnapshot(StateDto state)
     {
@@ -82,6 +102,40 @@ public sealed class DashboardViewModel : ObservableObject
         var next = !Paused;
         var echo = await _api.PostPauseAsync(next).ConfigureAwait(true);
         if (echo is not null) Paused = echo.Paused;
+    }
+
+    public async Task RefreshInboxHealthAsync()
+    {
+        if (_api is null) return;
+        try
+        {
+            var health = await _api.GetInboxHealthAsync().ConfigureAwait(true);
+            if (health is not null)
+            {
+                InboxHealth = health;
+                Raise(nameof(InboxBytesLabel));
+                Raise(nameof(SkippedLabel));
+                Raise(nameof(HasSkipped));
+            }
+        }
+        catch
+        {
+            // Best-effort; the dashboard tile already has a sensible default.
+        }
+    }
+
+    private static string HumanizeBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double value = bytes;
+        string[] units = { "KB", "MB", "GB", "TB" };
+        var unit = -1;
+        do
+        {
+            value /= 1024;
+            unit++;
+        } while (value >= 1024 && unit < units.Length - 1);
+        return $"{value:F1} {units[unit]}";
     }
 
     /// <summary>

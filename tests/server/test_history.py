@@ -63,3 +63,26 @@ async def test_history_clear(client, auth_headers, watcher, seeded_history):
     r = await client.delete("/api/history", headers=auth_headers)
     assert r.status_code == 204
     assert watcher.history.recent() == []
+
+
+@pytest.mark.asyncio
+async def test_history_status_filter(client, auth_headers, seeded_history):
+    r = await client.get("/api/history?status=error", headers=auth_headers)
+    rows = r.json()
+    assert [row["filename"] for row in rows] == ["exam.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_history_date_range_filter(client, auth_headers, seeded_history):
+    r = await client.get(
+        "/api/history?from=2026-04-29T10:05:00&to=2026-04-29T10:08:00",
+        headers=auth_headers,
+    )
+    rows = r.json()
+    assert [row["filename"] for row in rows] == ["exam.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_history_status_and_substring_compose(client, auth_headers, seeded_history):
+    r = await client.get("/api/history?status=ok&q=MaryDoe", headers=auth_headers)
+    assert {row["filename"] for row in r.json()} == {"quiz.pdf", "report.png"}
