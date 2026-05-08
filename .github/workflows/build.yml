@@ -27,8 +27,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,backend]"
           python -m pip install pyinstaller
-      - name: Pytest
-        run: pytest -q
+      - name: Pytest with coverage
+        run: pytest --cov=printwatcher --cov-report=term --cov-report=xml --cov-fail-under=65
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}
+          path: coverage.xml
+          if-no-files-found: warn
       - name: Restore C# solution
         working-directory: csharp
         run: dotnet restore PrintWatcher.sln
