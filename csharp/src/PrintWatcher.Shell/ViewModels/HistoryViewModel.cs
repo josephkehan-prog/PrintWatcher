@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using PrintWatcher.Shell.Models;
@@ -88,6 +89,8 @@ public sealed class HistoryViewModel : ObservableObject
                 _ = RefreshAsync();
         }
     }
+
+    public IReadOnlyList<string> StatusKinds { get; } = new[] { "Any", "ok", "error" };
 
     public AsyncRelayCommand? RefreshCommand { get; }
     public AsyncRelayCommand? ClearCommand { get; }

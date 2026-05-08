@@ -62,12 +62,9 @@
                 Date="{x:Bind ViewModel.To, Mode=TwoWay}" />
             <ComboBox
                 Grid.Column="2"
+                ItemsSource="{x:Bind ViewModel.StatusKinds}"
                 SelectedItem="{x:Bind ViewModel.StatusKind, Mode=TwoWay}"
-                MinWidth="120">
-                <x:String>Any</x:String>
-                <x:String>ok</x:String>
-                <x:String>error</x:String>
-            </ComboBox>
+                MinWidth="120" />
         </Grid>
 
         <Border
@@ -114,7 +111,7 @@
                                         Click="OnReprintClicked" />
                                     <MenuFlyoutItem
                                         Text="Open printer queue"
-                                        Icon="OpenLocal"
+                                        Icon="Globe"
                                         Click="OnOpenPrinterQueueClicked" />
                                 </MenuFlyout>
                             </Grid.ContextFlyout>
