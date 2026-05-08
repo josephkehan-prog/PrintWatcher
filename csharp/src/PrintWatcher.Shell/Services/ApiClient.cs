@@ -68,6 +68,16 @@ public sealed class ApiClient : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<PrintRecordDto?> ReprintAsync(string recordId, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsync(
+            $"/api/history/{Uri.EscapeDataString(recordId)}/reprint",
+            content: null,
+            ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PrintRecordDto>(_json, ct).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<PendingItemDto>> GetPendingAsync(CancellationToken ct = default)
     {
         var rows = await GetAsync<IReadOnlyList<PendingItemDto>>("/api/pending", ct).ConfigureAwait(false);

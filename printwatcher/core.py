@@ -16,6 +16,7 @@ import logging
 import os
 import queue
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -866,6 +867,35 @@ class WatcherCore:
 
     def pending_paths(self) -> tuple[Path, ...]:
         return self._worker.inflight_paths
+
+    def reprint(self, record: PrintRecord) -> Path:
+        """Re-queue a previously-printed file by copying it back into the inbox.
+
+        Looks for the source under ``_printed/<submitter>/<filename>`` (the
+        common case after a successful print) and falls back to
+        ``_printed/<filename>`` for older records. Copies — not moves — so
+        the history audit trail is preserved.
+
+        Raises ``FileNotFoundError`` if the source no longer exists on disk.
+        """
+        candidates = []
+        if record.submitter:
+            candidates.append(self._printed_dir / record.submitter / record.filename)
+        candidates.append(self._printed_dir / record.filename)
+        source = next((p for p in candidates if p.exists()), None)
+        if source is None:
+            raise FileNotFoundError(
+                f"reprint source not found for {record.filename!r} "
+                f"(submitter={record.submitter!r})"
+            )
+        target = self._watch_dir / record.filename
+        if target.exists():
+            target = target.with_stem(f"{target.stem}-reprint")
+        shutil.copy2(source, target)
+        # Don't pre-submit — the watchdog handler + rescan poller will pick
+        # up the new file in the inbox via the normal flow, including
+        # path-token / submitter resolution.
+        return target
 
     # ----- lifecycle ---------------------------------------------------------
 

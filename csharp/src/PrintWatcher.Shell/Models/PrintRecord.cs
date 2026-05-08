@@ -4,6 +4,9 @@ namespace PrintWatcher.Shell.Models;
 
 public sealed record PrintRecordDto
 {
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = "";
+
     [JsonPropertyName("timestamp")]
     public string Timestamp { get; init; } = "";
 

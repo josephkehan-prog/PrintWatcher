@@ -53,7 +53,8 @@ public partial class App : Application
             pending: new PendingViewModel(Api),
             tools: new ToolsViewModel(Api),
             settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail),
-            options: new OptionsViewModel((dto, ct) => Api.PutOptionsAsync(dto, ct)));
+            options: new OptionsViewModel((dto, ct) => Api.PutOptionsAsync(dto, ct)),
+            toasts: new ToastService());
         Events.FrameReceived += OnFrame;
         Events.StateChanged += OnConnState;
         await Events.StartAsync();

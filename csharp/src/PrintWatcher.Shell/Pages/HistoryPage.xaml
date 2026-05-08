@@ -80,6 +80,14 @@
                                 <ColumnDefinition Width="120" />
                                 <ColumnDefinition Width="180" />
                             </Grid.ColumnDefinitions>
+                            <Grid.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem
+                                        Text="Reprint"
+                                        Icon="Print"
+                                        Click="OnReprintClicked" />
+                                </MenuFlyout>
+                            </Grid.ContextFlyout>
                             <TextBlock Grid.Column="0" Text="{x:Bind Timestamp}" FontFamily="Consolas, Cascadia Code, monospace" />
                             <TextBlock Grid.Column="1" Text="{x:Bind Filename}"  TextTrimming="CharacterEllipsis" />
                             <TextBlock Grid.Column="2" Text="{x:Bind Status}" />

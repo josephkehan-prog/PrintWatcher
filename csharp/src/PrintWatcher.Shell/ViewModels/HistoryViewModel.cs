@@ -94,6 +94,25 @@ public sealed class HistoryViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Re-queue a previously-printed file. Backend looks up the source
+    /// under <c>_printed/&lt;submitter&gt;/&lt;filename&gt;</c> and copies
+    /// it back into the inbox; the watcher picks it up via the normal flow.
+    /// </summary>
+    public async Task ReprintAsync(PrintRecordDto record)
+    {
+        if (_api is null || string.IsNullOrEmpty(record.Id)) return;
+        try
+        {
+            await _api.ReprintAsync(record.Id).ConfigureAwait(true);
+            StatusLabel = $"Reprinting {record.Filename}…";
+        }
+        catch (Exception ex)
+        {
+            StatusLabel = $"Reprint failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Append a single record received via the "history" WS frame. The
     /// backend already filters server-side, so we just prepend to keep the
     /// most recent print on top.

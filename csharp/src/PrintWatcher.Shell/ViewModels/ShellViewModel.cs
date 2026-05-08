@@ -10,6 +10,7 @@ namespace PrintWatcher.Shell.ViewModels;
 /// </summary>
 public sealed class ShellViewModel : ObservableObject
 {
+    private readonly ToastService? _toasts;
     private ConnState _connection = ConnState.Connecting;
     private string _theme = "Ocean";
 
@@ -19,7 +20,8 @@ public sealed class ShellViewModel : ObservableObject
         PendingViewModel pending,
         ToolsViewModel tools,
         SettingsViewModel settings,
-        OptionsViewModel options)
+        OptionsViewModel options,
+        ToastService? toasts = null)
     {
         Dashboard = dashboard;
         History = history;
@@ -27,6 +29,7 @@ public sealed class ShellViewModel : ObservableObject
         Tools = tools;
         Settings = settings;
         Options = options;
+        _toasts = toasts;
     }
 
     public DashboardViewModel Dashboard { get; }
@@ -66,7 +69,17 @@ public sealed class ShellViewModel : ObservableObject
                 if (raw.TryGetProperty("record", out var recordEl))
                 {
                     var record = recordEl.Deserialize<PrintRecordDto>(JsonContext.Default.PrintRecordDto);
-                    if (record is not null) History.OnHistoryFrame(record);
+                    if (record is not null)
+                    {
+                        History.OnHistoryFrame(record);
+                        if (_toasts is not null)
+                        {
+                            if (record.Status == "ok")
+                                _toasts.NotifyPrinted(record.Filename, record.Printer);
+                            else if (record.Status == "error")
+                                _toasts.NotifyError(record.Filename, record.Detail);
+                        }
+                    }
                 }
                 break;
             case "pending":

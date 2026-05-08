@@ -7,6 +7,7 @@ the legacy Tk UI doesn't pull FastAPI's deps.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +43,7 @@ class PrintOptionsDto(BaseModel):
 
 
 class PrintRecordDto(BaseModel):
+    id: str = ""  # derived; stable across reloads (sha1 of timestamp+filename+submitter)
     timestamp: str
     filename: str
     status: str
@@ -54,7 +56,18 @@ class PrintRecordDto(BaseModel):
 
     @classmethod
     def from_core(cls, record: PrintRecord) -> PrintRecordDto:
-        return cls(**record.__dict__)
+        return cls(id=record_id(record), **record.__dict__)
+
+
+def record_id(record: PrintRecord) -> str:
+    """Stable, deterministic id derived from the record's identifying fields.
+
+    Not a security primitive — sha1 is fine here, only used for routing
+    /api/history/{id}/reprint to the right entry. Survives process restart
+    because the inputs are loaded verbatim from history.json.
+    """
+    seed = f"{record.timestamp}|{record.filename}|{record.submitter}"
+    return hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 class StatsDto(BaseModel):
