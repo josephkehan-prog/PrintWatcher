@@ -125,6 +125,14 @@ class VersionDto(BaseModel):
     python: str
 
 
+class UpdateCheckDto(BaseModel):
+    current: str
+    latest: str | None = None
+    html_url: str | None = None
+    has_update: bool = False
+    checked_at: str | None = None  # ISO timestamp of the last successful poll
+
+
 class InboxHealthDto(BaseModel):
     watch_dir: str
     inbox_count: int = 0

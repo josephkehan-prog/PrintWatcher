@@ -28,6 +28,10 @@ class AppState:
     extra: dict = field(default_factory=dict)
     _prefs_cache: dict | None = field(default=None, repr=False)
     _prefs_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # GitHub release-check cache: (monotonic_ts, payload-dict). Mutable from
+    # the route handler under _update_check_lock.
+    update_check_cache: tuple[float, dict] | None = field(default=None, repr=False)
+    _update_check_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def get_preferences(self) -> dict:
         """Return cached preferences. Reads disk once per process unless

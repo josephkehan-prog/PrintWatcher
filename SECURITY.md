@@ -46,6 +46,24 @@ is intentionally narrow:
   only way the WinUI shell learns the port and token. There is no
   external-facing endpoint by design.
 
+### Outbound network egress
+
+PrintWatcher is loopback-only by default but does make **one outbound
+HTTPS request per 24 hours** to ``api.github.com`` from the backend
+when a client hits ``GET /api/update-check``:
+
+- URL: ``https://api.github.com/repos/josephkehan-prog/PrintWatcher/releases/latest``
+- Method: GET
+- Body: none
+- Headers: ``Accept: application/vnd.github+json``, ``User-Agent: PrintWatcher``
+- Response cached in memory for 24 h
+- Network errors are swallowed; the dashboard simply doesn't show a
+  banner
+
+No user data is included in the request. The endpoint is hardcoded;
+no user input flows into the URL. To opt out, the WinUI shell can
+omit the call (the dashboard polls only if the page is opened).
+
 ### Out of scope
 
 - Multi-tenant deployments. PrintWatcher is single-user single-machine.

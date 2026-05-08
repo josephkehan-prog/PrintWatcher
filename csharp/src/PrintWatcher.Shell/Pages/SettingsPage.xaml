@@ -48,6 +48,47 @@
                 </StackPanel>
             </Border>
 
+            <!--
+              Per-printer defaults. Pick a printer; configured sides/color/copies
+              fill in only when the user (or a path-token override) hasn't set
+              the field explicitly. Saved under preferences.json's
+              printer_defaults subkey.
+            -->
+            <Border Style="{StaticResource GroupCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="PRINTER DEFAULTS" Style="{StaticResource SectionLabelStyle}" />
+                    <ComboBox
+                        Header="Printer"
+                        ItemsSource="{x:Bind ViewModel.KnownPrinters}"
+                        SelectedItem="{x:Bind ViewModel.PrinterDefaultPrinter, Mode=TwoWay}"
+                        MinWidth="260" />
+                    <ComboBox
+                        Header="Sides"
+                        ItemsSource="{x:Bind ViewModel.SidesOptions}"
+                        SelectedItem="{x:Bind ViewModel.PrinterDefaultSides, Mode=TwoWay}"
+                        MinWidth="180" />
+                    <ComboBox
+                        Header="Color"
+                        ItemsSource="{x:Bind ViewModel.ColorOptions}"
+                        SelectedItem="{x:Bind ViewModel.PrinterDefaultColor, Mode=TwoWay}"
+                        MinWidth="180" />
+                    <NumberBox
+                        Header="Copies"
+                        Minimum="1"
+                        Maximum="99"
+                        Value="{x:Bind ViewModel.PrinterDefaultCopies, Mode=TwoWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button
+                            Content="Save defaults"
+                            Style="{ThemeResource AccentButtonStyle}"
+                            Command="{x:Bind ViewModel.SavePrinterDefaultCommand}" />
+                        <Button
+                            Content="Clear"
+                            Command="{x:Bind ViewModel.ClearPrinterDefaultCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource GroupCardStyle}">
                 <StackPanel Spacing="12">
                     <Grid>

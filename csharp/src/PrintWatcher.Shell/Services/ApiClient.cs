@@ -77,6 +77,24 @@ public sealed class ApiClient : IDisposable
     public Task<InboxHealthDto?> GetInboxHealthAsync(CancellationToken ct = default) =>
         GetAsync<InboxHealthDto>("/api/inbox/health", ct);
 
+    public Task<UpdateCheckDto?> GetUpdateCheckAsync(bool force = false, CancellationToken ct = default) =>
+        GetAsync<UpdateCheckDto>($"/api/update-check?force={(force ? "true" : "false")}", ct);
+
+    public Task<IReadOnlyDictionary<string, PrintOptionsDto>?> ListPrinterDefaultsAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyDictionary<string, PrintOptionsDto>>("/api/printer-defaults", ct);
+
+    public Task<PrintOptionsDto?> PutPrinterDefaultAsync(
+        string printer, PrintOptionsDto defaults, CancellationToken ct = default) =>
+        PutAsync<PrintOptionsDto, PrintOptionsDto>(
+            $"/api/printer-defaults/{Uri.EscapeDataString(printer)}", defaults, ct);
+
+    public async Task DeletePrinterDefaultAsync(string printer, CancellationToken ct = default)
+    {
+        using var response = await _http.DeleteAsync(
+            $"/api/printer-defaults/{Uri.EscapeDataString(printer)}", ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task ClearHistoryAsync(CancellationToken ct = default)
     {
         using var response = await _http.DeleteAsync("/api/history", ct).ConfigureAwait(false);

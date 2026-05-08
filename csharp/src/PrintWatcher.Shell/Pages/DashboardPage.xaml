@@ -37,6 +37,12 @@
                             FontSize="13"
                             Foreground="{ThemeResource MutedBrush}"
                             VerticalAlignment="Center" />
+                        <HyperlinkButton
+                            Content="{x:Bind ViewModel.UpdateLabel, Mode=OneWay}"
+                            NavigateUri="{x:Bind ViewModel.UpdateUrl, Mode=OneWay}"
+                            Visibility="{x:Bind UpdateChipVisible(ViewModel.UpdateAvailable), Mode=OneWay}"
+                            FontSize="12"
+                            Padding="4,0" />
                     </StackPanel>
                 </StackPanel>
                 <Button

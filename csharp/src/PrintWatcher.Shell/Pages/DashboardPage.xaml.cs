@@ -29,6 +29,7 @@ public sealed partial class DashboardPage : Page
     private async void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         await ViewModel.RefreshInboxHealthAsync();
+        await ViewModel.CheckForUpdateAsync();
     }
 
     private void OnLogCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -45,6 +46,9 @@ public sealed partial class DashboardPage : Page
 
     /// <summary>x:Bind helper — show the empty-state placeholder when the log is empty.</summary>
     public Visibility LogToCollapsed(int count) => count > 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>x:Bind helper — show the update chip only when an update is available.</summary>
+    public Visibility UpdateChipVisible(bool available) => available ? Visibility.Visible : Visibility.Collapsed;
 
     public DashboardViewModel ViewModel { get; }
 

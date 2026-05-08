@@ -74,6 +74,22 @@ public sealed class DashboardViewModel : ObservableObject
         private set => SetField(ref _inboxHealth, value);
     }
 
+    private bool _updateAvailable;
+    private string? _updateLatest;
+    private string? _updateUrl;
+
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        private set => SetField(ref _updateAvailable, value);
+    }
+
+    public string UpdateLabel => string.IsNullOrEmpty(_updateLatest)
+        ? ""
+        : $"v{_updateLatest} available";
+
+    public string UpdateUrl => _updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases";
+
     public string InboxBytesLabel => HumanizeBytes(InboxHealth.TotalBytes);
 
     public string SkippedLabel => InboxHealth.SkippedCount switch
@@ -121,6 +137,27 @@ public sealed class DashboardViewModel : ObservableObject
         catch
         {
             // Best-effort; the dashboard tile already has a sensible default.
+        }
+    }
+
+    public async Task CheckForUpdateAsync()
+    {
+        if (_api is null) return;
+        try
+        {
+            var info = await _api.GetUpdateCheckAsync().ConfigureAwait(true);
+            if (info is null) return;
+            _updateLatest = info.Latest;
+            _updateUrl = info.HtmlUrl;
+            UpdateAvailable = info.HasUpdate;
+            Raise(nameof(UpdateLabel));
+            Raise(nameof(UpdateUrl));
+        }
+        catch
+        {
+            // Best-effort; backend handles transient errors and returns
+            // has_update=false, but a network blip on this side shouldn't
+            // surface either.
         }
     }
 

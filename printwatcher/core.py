@@ -283,6 +283,32 @@ def resolve_path_options(
     return options, applied, submitter
 
 
+def _apply_printer_defaults(
+    options: PrintOptions,
+    printer_defaults: dict[str, dict],
+) -> PrintOptions:
+    """Fill in unset PrintOptions fields from per-printer defaults.
+
+    Defaults act as the floor: a field is only filled if the caller hasn't
+    set it explicitly (None for sides/color, copies==1 for copies).
+    Explicit user choices and path-token overrides are always preserved.
+
+    Returns the input unchanged if ``options.printer`` has no registered
+    defaults or is None.
+    """
+    if not options.printer:
+        return options
+    defaults = printer_defaults.get(options.printer)
+    if not defaults:
+        return options
+    return replace(
+        options,
+        sides=options.sides if options.sides is not None else defaults.get("sides"),
+        color=options.color if options.color is not None else defaults.get("color"),
+        copies=options.copies if options.copies != 1 else int(defaults.get("copies") or 1),
+    )
+
+
 def _submitter_for(path: Path, watch_dir: Path) -> str:
     """Multi-user attribution: subfolder name when present, else current OS user.
 
@@ -475,6 +501,7 @@ class PrinterWorker(threading.Thread):
         stat_cb: Callable[[str, int], None],
         options_provider: Callable[[], PrintOptions],
         history_cb: Callable[[PrintRecord], None],
+        printer_defaults_provider: Callable[[], dict[str, dict]] | None = None,
     ) -> None:
         super().__init__(daemon=True, name="PrinterWorker")
         self._sumatra = sumatra
@@ -484,6 +511,10 @@ class PrinterWorker(threading.Thread):
         self._stat = stat_cb
         self._options_provider = options_provider
         self._record_history = history_cb
+        # Per-printer defaults fill gaps in the resolved options; explicit
+        # ui_options + path-tokens always win. Provider is called per-job
+        # so changes via PUT /api/printer-defaults take effect immediately.
+        self._printer_defaults_provider = printer_defaults_provider or (lambda: {})
         self._queue: queue.Queue[Path] = queue.Queue()
         self._inflight: set[Path] = set()
         self._lock = threading.Lock()
@@ -539,6 +570,12 @@ class PrinterWorker(threading.Thread):
         options, applied_tokens, _resolved_submitter = resolve_path_options(
             path, self._watch_dir, ui_options,
         )
+        # Precedence (highest to lowest):
+        #   1. path/filename tokens (already merged into options above)
+        #   2. ui_options (already merged in resolve_path_options' base)
+        #   3. per-printer defaults — fill gaps only, never override explicit
+        # In other words: defaults are the floor, never the ceiling.
+        options = _apply_printer_defaults(options, self._printer_defaults_provider())
         printer_label = options.printer or DEFAULT_PRINTER_LABEL
         details = [f"to {printer_label}"]
         if options.copies > 1:
@@ -823,6 +860,7 @@ class WatcherCore:
             stat_cb=self._dispatch_stat,
             options_provider=self.get_options,
             history_cb=self._dispatch_history,
+            printer_defaults_provider=self._read_printer_defaults,
         )
         self._handler = InboxHandler(
             watch_dir=watch_dir,
@@ -867,6 +905,25 @@ class WatcherCore:
 
     def pending_paths(self) -> tuple[Path, ...]:
         return self._worker.inflight_paths
+
+    def _read_printer_defaults(self) -> dict[str, dict]:
+        """Read the printer_defaults subkey from preferences.json.
+
+        Called per-job by the worker so PUT /api/printer-defaults takes
+        effect immediately without a process restart. Errors return {} so
+        a malformed prefs file never blocks the print path.
+        """
+        try:
+            raw = load_preferences().get("printer_defaults", {})
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(name): defaults if isinstance(defaults, dict) else {}
+                for name, defaults in raw.items()
+            }
+        except Exception:  # pragma: no cover - never block printing
+            log.exception("printer_defaults read failed")
+            return {}
 
     _INBOX_HEALTH_TTL_SEC = 30.0
 
