@@ -55,6 +55,12 @@ def _write_discovery(port: int, token: str) -> Path:
         ),
         encoding="utf-8",
     )
+    # Restrict to owner read/write. On Windows, %LOCALAPPDATA% ACLs already
+    # restrict to the user; chmod is a no-op on the FAT/NTFS POSIX layer.
+    # On Linux/macOS dev fallback (~/.printwatcher/), the default umask
+    # would otherwise leave the bearer token world-readable.
+    with contextlib.suppress(OSError):
+        target.chmod(0o600)
     return target
 
 
