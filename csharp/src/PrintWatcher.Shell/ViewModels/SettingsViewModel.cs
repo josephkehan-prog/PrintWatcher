@@ -163,7 +163,18 @@ public sealed class SettingsViewModel : ObservableObject
     public int PrinterDefaultCopies
     {
         get => _pdCopies;
-        set => SetField(ref _pdCopies, Math.Clamp(value, 1, 99));
+        set
+        {
+            if (SetField(ref _pdCopies, Math.Clamp(value, 1, 99)))
+                Raise(nameof(PrinterDefaultCopiesValue));
+        }
+    }
+
+    /// <summary>NumberBox.Value is typed double — this wrapper bridges to the int property.</summary>
+    public double PrinterDefaultCopiesValue
+    {
+        get => _pdCopies;
+        set => PrinterDefaultCopies = (int)Math.Round(value);
     }
 
     public AsyncRelayCommand? SavePrinterDefaultCommand { get; }

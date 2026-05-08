@@ -76,7 +76,7 @@
                         Header="Copies"
                         Minimum="1"
                         Maximum="99"
-                        Value="{x:Bind ViewModel.PrinterDefaultCopies, Mode=TwoWay}" />
+                        Value="{x:Bind ViewModel.PrinterDefaultCopiesValue, Mode=TwoWay}" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button
                             Content="Save defaults"

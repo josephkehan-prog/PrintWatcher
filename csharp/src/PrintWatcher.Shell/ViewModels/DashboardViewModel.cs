@@ -88,7 +88,12 @@ public sealed class DashboardViewModel : ObservableObject
         ? ""
         : $"v{_updateLatest} available";
 
-    public string UpdateUrl => _updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases";
+    public Uri UpdateUrl => Uri.TryCreate(
+        _updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases",
+        UriKind.Absolute,
+        out var uri)
+        ? uri
+        : new Uri("https://github.com/josephkehan-prog/PrintWatcher/releases");
 
     public string InboxBytesLabel => HumanizeBytes(InboxHealth.TotalBytes);
 
