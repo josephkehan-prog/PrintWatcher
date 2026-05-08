@@ -61,8 +61,13 @@ when a client hits ``GET /api/update-check``:
   banner
 
 No user data is included in the request. The endpoint is hardcoded;
-no user input flows into the URL. To opt out, the WinUI shell can
-omit the call (the dashboard polls only if the page is opened).
+no user input flows into the URL.
+
+**Disabling the check.** Settings → Privacy → "Check for updates"
+toggles ``preferences.update_check`` (default ``true``). When false,
+``GET /api/update-check`` short-circuits to a no-update response
+without making the outbound call. The toggle persists in
+``preferences.json`` and survives restart.
 
 ### Out of scope
 

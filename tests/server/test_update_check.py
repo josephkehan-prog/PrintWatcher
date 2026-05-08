@@ -113,3 +113,20 @@ def test_requires_token(app) -> None:
     with client:
         r = client.get("/api/update-check")
     assert r.status_code == 401
+
+
+def test_pref_false_skips_network(app, token) -> None:
+    """When preferences.update_check is False, the route must not hit the
+    network — short-circuit to a no-update response."""
+    state = app.state.printwatcher
+    state.invalidate_preferences(fresh={"update_check": False})
+
+    client = TestClient(app)
+    with client, patch(
+        "printwatcher.server.routes.state.urllib.request.urlopen",
+    ) as mock:
+        r = client.get("/api/update-check", headers=_auth(token))
+
+    assert r.status_code == 200
+    assert r.json()["has_update"] is False
+    mock.assert_not_called()

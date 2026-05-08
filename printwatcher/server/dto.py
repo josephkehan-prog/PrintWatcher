@@ -92,6 +92,7 @@ class PreferencesDto(BaseModel):
     hold_mode: bool = False
     larger_text: bool = False
     reduce_transparency: bool = False
+    update_check: bool = True  # outbound GET to api.github.com once per 24h
 
 
 class StateDto(BaseModel):

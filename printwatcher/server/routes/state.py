@@ -125,8 +125,14 @@ def get_update_check(
     response so a transient outage never breaks the dashboard.
     """
     current = state.app_version or APP_VERSION
-    now = time.monotonic()
 
+    # User-disableable kill switch. Default is true so existing installs keep
+    # the once-per-day check; flipping the pref to false eliminates the
+    # outbound HTTPS request entirely.
+    if not state.get_preferences().get("update_check", True):
+        return UpdateCheckDto(current=current, has_update=False)
+
+    now = time.monotonic()
     with state._update_check_lock:
         if not force and state.update_check_cache is not None:
             cached_at, cached = state.update_check_cache

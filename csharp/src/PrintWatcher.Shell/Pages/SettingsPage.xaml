@@ -48,6 +48,17 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource GroupCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="PRIVACY" Style="{StaticResource SectionLabelStyle}" />
+                    <ToggleSwitch
+                        Header="Check for updates"
+                        OffContent="Disabled — no outbound network requests"
+                        OnContent="Once per day, GET api.github.com (no user data)"
+                        IsOn="{x:Bind ViewModel.UpdateCheckEnabled, Mode=TwoWay}" />
+                </StackPanel>
+            </Border>
+
             <!--
               Per-printer defaults. Pick a printer; configured sides/color/copies
               fill in only when the user (or a path-token override) hasn't set

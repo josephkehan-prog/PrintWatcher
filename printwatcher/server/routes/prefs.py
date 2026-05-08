@@ -20,6 +20,7 @@ def get_prefs(state: AppState = Depends(get_state)) -> PreferencesDto:
         hold_mode=bool(raw.get("hold_mode", False)),
         larger_text=bool(raw.get("larger_text", False)),
         reduce_transparency=bool(raw.get("reduce_transparency", False)),
+        update_check=bool(raw.get("update_check", True)),
     )
 
 

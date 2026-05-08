@@ -22,6 +22,7 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _largerText;
     private bool _reduceTransparency;
     private bool _holdMode;
+    private bool _updateCheckEnabled = true;
     private string _statusLabel = "";
     private bool _suppressSave;
 
@@ -74,6 +75,12 @@ public sealed class SettingsViewModel : ObservableObject
     {
         get => _holdMode;
         set { if (SetField(ref _holdMode, value)) _ = SaveAsync(); }
+    }
+
+    public bool UpdateCheckEnabled
+    {
+        get => _updateCheckEnabled;
+        set { if (SetField(ref _updateCheckEnabled, value)) _ = SaveAsync(); }
     }
 
     public string StatusLabel
@@ -264,6 +271,7 @@ public sealed class SettingsViewModel : ObservableObject
             LargerText = prefs.LargerText;
             ReduceTransparency = prefs.ReduceTransparency;
             HoldMode = prefs.HoldMode;
+            UpdateCheckEnabled = prefs.UpdateCheck;
         }
         finally
         {
@@ -290,6 +298,7 @@ public sealed class SettingsViewModel : ObservableObject
                 LargerText = _largerText,
                 ReduceTransparency = _reduceTransparency,
                 HoldMode = _holdMode,
+                UpdateCheck = _updateCheckEnabled,
             }).ConfigureAwait(true);
             StatusLabel = "Saved.";
         }

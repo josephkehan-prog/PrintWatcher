@@ -8,4 +8,5 @@ public sealed record PreferencesDto
     [JsonPropertyName("hold_mode")] public bool HoldMode { get; init; }
     [JsonPropertyName("larger_text")] public bool LargerText { get; init; }
     [JsonPropertyName("reduce_transparency")] public bool ReduceTransparency { get; init; }
+    [JsonPropertyName("update_check")] public bool UpdateCheck { get; init; } = true;
 }
