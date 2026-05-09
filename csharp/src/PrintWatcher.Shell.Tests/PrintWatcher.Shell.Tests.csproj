@@ -38,6 +38,7 @@
     <Compile Include="..\PrintWatcher.Shell\Services\BackendLocator.cs" Link="Services\BackendLocator.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\BackendSupervisor.cs" Link="Services\BackendSupervisor.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\ThemePalette.cs" Link="Services\ThemePalette.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\ToastService.cs" Link="Services\ToastService.cs" />
   </ItemGroup>
 
 </Project>
