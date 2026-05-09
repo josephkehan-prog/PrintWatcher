@@ -83,3 +83,49 @@ def test_reprint_requires_token(app, watcher) -> None:
     with client:
         r = client.post(f"/api/history/{record_id(rec)}/reprint")
     assert r.status_code == 401
+
+
+def test_reprint_rejects_path_traversal_in_filename(app, watcher, token, tmp_inbox) -> None:
+    """A historic record whose filename escapes the inbox via ../ must not
+    cause the copy target (or source lookup) to leave watch_dir."""
+    # Build a record with a malformed filename and a real source on disk that
+    # the unsanitized code path would have copied through.
+    rec = PrintRecord(
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        filename="../escaped.pdf",  # tries to escape watch_dir
+        status="ok",
+        printer="LaserJet",
+        submitter="alice",
+    )
+    watcher.history.append(rec)
+    # Place a "matching" source under the basename so the canonical lookup
+    # would succeed; if reprint sanitizes correctly, the target lands inside
+    # tmp_inbox under "escaped.pdf" — never above tmp_inbox.
+    printed = tmp_inbox / PRINTED_SUBDIR / "alice"
+    printed.mkdir(parents=True, exist_ok=True)
+    (printed / "escaped.pdf").write_bytes(b"%PDF-1.4 source")
+
+    client = TestClient(app)
+    with client:
+        r = client.post(f"/api/history/{record_id(rec)}/reprint", headers=_auth(token))
+
+    # The basename-only path lands inside tmp_inbox, never above.
+    assert r.status_code == 200
+    assert (tmp_inbox / "escaped.pdf").exists()
+    assert not (tmp_inbox.parent / "escaped.pdf").exists()
+
+
+def test_reprint_rejects_dot_filename(app, watcher, token) -> None:
+    """A degenerate filename (".", "..", "") yields 410 — basename strips to nothing."""
+    rec = PrintRecord(
+        timestamp=datetime.now().isoformat(timespec="seconds"),
+        filename="..",
+        status="ok",
+        printer="LaserJet",
+        submitter="bob",
+    )
+    watcher.history.append(rec)
+    client = TestClient(app)
+    with client:
+        r = client.post(f"/api/history/{record_id(rec)}/reprint", headers=_auth(token))
+    assert r.status_code == 410

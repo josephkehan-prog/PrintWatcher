@@ -1014,17 +1014,30 @@ class WatcherCore:
 
         Raises ``FileNotFoundError`` if the source no longer exists on disk.
         """
+        # Strip any path components from the stored filename so a malformed
+        # historic record (filename containing "../" or an absolute path)
+        # can't make either the source lookup or the target write escape
+        # the watch dir. Mirrors the basename pattern in routes/upload.py.
+        safe_name = Path(record.filename).name
+        if not safe_name or safe_name in (".", ".."):
+            raise FileNotFoundError(
+                f"reprint source has invalid filename {record.filename!r}"
+            )
+        # Submitter is a single path segment by construction (see
+        # resolve_path_options); reduce to basename defensively.
+        safe_submitter = Path(record.submitter).name if record.submitter else ""
+
         candidates = []
-        if record.submitter:
-            candidates.append(self._printed_dir / record.submitter / record.filename)
-        candidates.append(self._printed_dir / record.filename)
+        if safe_submitter:
+            candidates.append(self._printed_dir / safe_submitter / safe_name)
+        candidates.append(self._printed_dir / safe_name)
         source = next((p for p in candidates if p.exists()), None)
         if source is None:
             raise FileNotFoundError(
-                f"reprint source not found for {record.filename!r} "
-                f"(submitter={record.submitter!r})"
+                f"reprint source not found for {safe_name!r} "
+                f"(submitter={safe_submitter!r})"
             )
-        target = self._watch_dir / record.filename
+        target = self._watch_dir / safe_name
         if target.exists():
             target = target.with_stem(f"{target.stem}-reprint")
         shutil.copy2(source, target)
@@ -1137,25 +1150,37 @@ class WatcherCore:
         Also handles midnight rollover: if the calendar date has changed
         since the last seed, ``today`` is recomputed from history first so
         yesterday's count doesn't carry over.
+
+        Synchronises on ``_stats_lock``: this method runs on the worker
+        thread, ``_reseed_today_from_history`` may run on startup, and
+        ``stats`` reads can hit any thread. Holding the lock around the
+        rollover keeps ``_today_iso``, the reseed, and the eventual
+        ``today`` increment in one consistent step.
         """
         if record.status != "ok":
             return
         current_iso = datetime.now().date().isoformat()
-        if current_iso != self._today_iso:
-            self._today_iso = current_iso
-            self._reseed_today_from_history()
-        if record.timestamp.startswith(self._today_iso):
+        record_iso_match = False
+        with self._stats_lock:
+            if current_iso != self._today_iso:
+                self._today_iso = current_iso
+                self._stats.today = sum(
+                    1 for r in self._history.recent()
+                    if r.status == "ok" and r.timestamp.startswith(self._today_iso)
+                )
+            record_iso_match = record.timestamp.startswith(self._today_iso)
+        if record_iso_match:
             self._dispatch_stat("today", 1)
 
     def _reseed_today_from_history(self) -> None:
-        """Recount ``today`` from on-disk history. Used at startup and on
-        midnight rollover."""
-        count = sum(
-            1 for r in self._history.recent()
-            if r.status == "ok" and r.timestamp.startswith(self._today_iso)
-        )
+        """Recount ``today`` from on-disk history. Used at startup only —
+        midnight rollover is handled inline in ``_maybe_bump_today`` while
+        holding ``_stats_lock``."""
         with self._stats_lock:
-            self._stats.today = count
+            self._stats.today = sum(
+                1 for r in self._history.recent()
+                if r.status == "ok" and r.timestamp.startswith(self._today_iso)
+            )
 
     def _dispatch_pending(self) -> None:
         items = self._worker.inflight_paths

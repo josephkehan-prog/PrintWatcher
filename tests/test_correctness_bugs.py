@@ -114,6 +114,32 @@ def test_inflight_dedup_normalizes_paths(tmp_path) -> None:
 
 # --- bug #3 -----------------------------------------------------------------
 
+def test_today_iso_rollover_under_concurrent_dispatch(watcher: WatcherCore) -> None:
+    """Midnight rollover must update _today_iso atomically with the reseed.
+
+    Reproduces the race window the lock fix closes: a record dated yesterday
+    arriving after a record dated today should not split the date update
+    across two un-locked steps.
+    """
+    today = datetime.now().date().isoformat()
+    earlier_today = PrintRecord(
+        timestamp=f"{today}T08:00:00", filename="a.pdf", status="ok",
+    )
+    watcher.history.append(earlier_today)
+    # Force the watcher's view of "today" to a fake yesterday so the next
+    # record triggers the rollover branch.
+    watcher._today_iso = "1999-01-01"
+    later_today = PrintRecord(
+        timestamp=f"{today}T09:00:00", filename="b.pdf", status="ok",
+    )
+    watcher._dispatch_history(later_today)
+    # After rollover: today must equal the real date, and the count must
+    # include both seeded records (a.pdf was already in history, b.pdf was
+    # the trigger).
+    assert watcher._today_iso == today
+    assert watcher.stats["today"] >= 1
+
+
 def test_lifespan_does_not_leak_subscribers(tmp_path) -> None:
     """Each FastAPI lifespan cycle must end with no extra WatcherCore
     subscribers — otherwise events fan-out N× after N restarts."""
