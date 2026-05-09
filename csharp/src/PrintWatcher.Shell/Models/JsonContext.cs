@@ -22,7 +22,7 @@ namespace PrintWatcher.Shell.Models;
 [JsonSerializable(typeof(ToolRunStartedDto))]
 [JsonSerializable(typeof(InboxHealthDto))]
 [JsonSerializable(typeof(UpdateCheckDto))]
-[JsonSerializable(typeof(System.Collections.Generic.IReadOnlyDictionary<string, PrintOptionsDto>))]
+[JsonSerializable(typeof(System.Collections.Generic.Dictionary<string, PrintOptionsDto>))]
 [JsonSerializable(typeof(HelloFrame))]
 [JsonSerializable(typeof(StatFrame))]
 [JsonSerializable(typeof(LogFrame))]

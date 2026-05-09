@@ -80,8 +80,8 @@ public sealed class ApiClient : IDisposable
     public Task<UpdateCheckDto?> GetUpdateCheckAsync(bool force = false, CancellationToken ct = default) =>
         GetAsync<UpdateCheckDto>($"/api/update-check?force={(force ? "true" : "false")}", ct);
 
-    public Task<IReadOnlyDictionary<string, PrintOptionsDto>?> ListPrinterDefaultsAsync(CancellationToken ct = default) =>
-        GetAsync<IReadOnlyDictionary<string, PrintOptionsDto>>("/api/printer-defaults", ct);
+    public Task<Dictionary<string, PrintOptionsDto>?> ListPrinterDefaultsAsync(CancellationToken ct = default) =>
+        GetAsync<Dictionary<string, PrintOptionsDto>>("/api/printer-defaults", ct);
 
     public Task<PrintOptionsDto?> PutPrinterDefaultAsync(
         string printer, PrintOptionsDto defaults, CancellationToken ct = default) =>
