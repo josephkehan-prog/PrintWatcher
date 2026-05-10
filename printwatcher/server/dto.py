@@ -7,6 +7,8 @@ the legacy Tk UI doesn't pull FastAPI's deps.
 
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -24,7 +26,7 @@ class PrintOptionsDto(BaseModel):
     color: Color | None = None
 
     @classmethod
-    def from_core(cls, options: PrintOptions) -> "PrintOptionsDto":
+    def from_core(cls, options: PrintOptions) -> PrintOptionsDto:
         return cls(
             printer=options.printer,
             copies=options.copies,
@@ -42,6 +44,7 @@ class PrintOptionsDto(BaseModel):
 
 
 class PrintRecordDto(BaseModel):
+    id: str = ""  # derived; stable across reloads (sha1 of timestamp+filename+submitter)
     timestamp: str
     filename: str
     status: str
@@ -53,8 +56,23 @@ class PrintRecordDto(BaseModel):
     submitter: str = ""
 
     @classmethod
-    def from_core(cls, record: PrintRecord) -> "PrintRecordDto":
-        return cls(**record.__dict__)
+    def from_core(cls, record: PrintRecord) -> PrintRecordDto:
+        return cls(id=record_id(record), **record.__dict__)
+
+
+def record_id(record: PrintRecord) -> str:
+    """Stable, deterministic id derived from the record's identifying fields.
+
+    Not a security primitive — sha1 is fine here, only used for routing
+    /api/history/{id}/reprint to the right entry. Survives process restart
+    because the inputs are loaded verbatim from history.json.
+
+    20 hex chars (80 bits) keeps birthday-collision probability negligible
+    for any realistic history size (~10⁻⁹ at the 200-record cap, still
+    under 10⁻⁵ at one million records).
+    """
+    seed = f"{record.timestamp}|{record.filename}|{record.submitter}"
+    return hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:20]
 
 
 class StatsDto(BaseModel):
@@ -79,6 +97,7 @@ class PreferencesDto(BaseModel):
     hold_mode: bool = False
     larger_text: bool = False
     reduce_transparency: bool = False
+    update_check: bool = True  # outbound GET to api.github.com once per 24h
 
 
 class StateDto(BaseModel):
@@ -104,3 +123,30 @@ class ToolRunDto(BaseModel):
 class ToolRunStartedDto(BaseModel):
     run_id: str
     label: str
+
+
+class VersionDto(BaseModel):
+    app: str
+    server: str = "fastapi"
+    python: str
+
+
+class UpdateCheckDto(BaseModel):
+    current: str
+    latest: str | None = None
+    html_url: str | None = None
+    has_update: bool = False
+    checked_at: datetime | None = None  # last successful poll
+
+
+class InboxHealthDto(BaseModel):
+    watch_dir: str
+    inbox_count: int = 0
+    inbox_bytes: int = 0
+    printed_count: int = 0
+    printed_bytes: int = 0
+    skipped_count: int = 0
+    skipped_bytes: int = 0
+    scheduled_count: int = 0
+    scheduled_bytes: int = 0
+    total_bytes: int = 0

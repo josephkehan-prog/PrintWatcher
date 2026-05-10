@@ -14,8 +14,9 @@ import io
 import logging
 import secrets
 import threading
+from collections.abc import Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from printwatcher.server.events import EventBus
@@ -64,7 +65,7 @@ class _LogBridge(logging.Handler):
 class ToolRunner:
     """Thread pool that streams tool output through the EventBus."""
 
-    def __init__(self, events: "EventBus", max_workers: int = 4) -> None:
+    def __init__(self, events: EventBus, max_workers: int = 4) -> None:
         self._events = events
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="pwtool")
         self._cancels: dict[str, threading.Event] = {}
@@ -102,13 +103,16 @@ class ToolRunner:
         label: str,
         cancel: threading.Event,
     ) -> int:
-        emit_stdout = lambda line: self._events.publish({
-            "type": "tool", "run_id": run_id, "stream": "stdout", "line": line,
-        })
-        emit_log = lambda level, line: self._events.publish({
-            "type": "tool", "run_id": run_id, "stream": "log",
-            "level": level, "line": line,
-        })
+        def emit_stdout(line: str) -> None:
+            self._events.publish({
+                "type": "tool", "run_id": run_id, "stream": "stdout", "line": line,
+            })
+
+        def emit_log(level: str, line: str) -> None:
+            self._events.publish({
+                "type": "tool", "run_id": run_id, "stream": "log",
+                "level": level, "line": line,
+            })
 
         bridge = _LogBridge(emit_log)
         bridge.setLevel(logging.INFO)

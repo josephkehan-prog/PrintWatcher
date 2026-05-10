@@ -16,18 +16,19 @@ import logging
 import os
 import queue
 import re
+import shutil
 import subprocess
 import threading
 import time
-from dataclasses import asdict, dataclass, field, replace
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 EXTS = frozenset({".pdf", ".png", ".jpg", ".jpeg"})
 POLL_INTERVAL_SEC = 5.0
@@ -282,6 +283,40 @@ def resolve_path_options(
     return options, applied, submitter
 
 
+def _apply_printer_defaults(
+    options: PrintOptions,
+    printer_defaults: dict[str, dict],
+) -> PrintOptions:
+    """Fill in unset PrintOptions fields from per-printer defaults.
+
+    Defaults act as the floor: a field is only filled if the caller hasn't
+    set it explicitly (None for sides/color, copies==1 for copies).
+    Explicit user choices and path-token overrides are always preserved.
+
+    **Known quirk on copies==1.** ``PrintOptions.copies`` is an int with a
+    default of 1, so the function can't distinguish "user picked exactly
+    1 copy" from "user left it at the default". A user who explicitly
+    chooses 1 copy on a printer with default 3 will silently get 3
+    copies. Switching ``copies`` to ``int | None`` would fix this but
+    propagates None-handling through resolve_path_options, the UI, and
+    persistence — deferred until someone reports it.
+
+    Returns the input unchanged if ``options.printer`` has no registered
+    defaults or is None.
+    """
+    if not options.printer:
+        return options
+    defaults = printer_defaults.get(options.printer)
+    if not defaults:
+        return options
+    return replace(
+        options,
+        sides=options.sides if options.sides is not None else defaults.get("sides"),
+        color=options.color if options.color is not None else defaults.get("color"),
+        copies=options.copies if options.copies != 1 else int(defaults.get("copies") or 1),
+    )
+
+
 def _submitter_for(path: Path, watch_dir: Path) -> str:
     """Multi-user attribution: subfolder name when present, else current OS user.
 
@@ -315,8 +350,12 @@ def _color_label(value: str | None) -> str:
 # Printer enumeration (Windows PowerShell)
 # ---------------------------------------------------------------------------
 
-def list_printers() -> list[str]:
-    """Return Windows printer names via PowerShell. Empty list on failure."""
+_PRINTERS_TTL_SEC = 30.0
+_printers_cache: tuple[float, list[str]] | None = None
+_printers_cache_lock = threading.Lock()
+
+
+def _list_printers_uncached() -> list[str]:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "(Get-Printer).Name"],
@@ -331,6 +370,35 @@ def list_printers() -> list[str]:
         log.warning("Get-Printer exit=%s stderr=%s", result.returncode, result.stderr.strip())
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def list_printers() -> list[str]:
+    """Return Windows printer names via PowerShell, with a 30 s TTL cache.
+
+    PowerShell cold-start is 200–500 ms on Windows; the WinUI shell hits
+    /api/state on focus and after every mutation, which would re-shell
+    every time without caching. Printers don't appear/disappear at sub-
+    minute resolution, so 30 s is comfortably under any human-visible
+    staleness threshold.
+    """
+    global _printers_cache
+    now = time.monotonic()
+    with _printers_cache_lock:
+        if _printers_cache is not None:
+            cached_at, names = _printers_cache
+            if now - cached_at < _PRINTERS_TTL_SEC:
+                return list(names)
+    names = _list_printers_uncached()
+    with _printers_cache_lock:
+        _printers_cache = (now, list(names))
+    return names
+
+
+def _invalidate_printers_cache() -> None:
+    """Test-only hook to drop the cache between cases."""
+    global _printers_cache
+    with _printers_cache_lock:
+        _printers_cache = None
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +508,7 @@ class PrinterWorker(threading.Thread):
         stat_cb: Callable[[str, int], None],
         options_provider: Callable[[], PrintOptions],
         history_cb: Callable[[PrintRecord], None],
+        printer_defaults_provider: Callable[[], dict[str, dict]] | None = None,
     ) -> None:
         super().__init__(daemon=True, name="PrinterWorker")
         self._sumatra = sumatra
@@ -449,6 +518,10 @@ class PrinterWorker(threading.Thread):
         self._stat = stat_cb
         self._options_provider = options_provider
         self._record_history = history_cb
+        # Per-printer defaults fill gaps in the resolved options; explicit
+        # ui_options + path-tokens always win. Provider is called per-job
+        # so changes via PUT /api/printer-defaults take effect immediately.
+        self._printer_defaults_provider = printer_defaults_provider or (lambda: {})
         self._queue: queue.Queue[Path] = queue.Queue()
         self._inflight: set[Path] = set()
         self._lock = threading.Lock()
@@ -460,13 +533,21 @@ class PrinterWorker(threading.Thread):
             return tuple(self._inflight)
 
     def submit(self, path: Path) -> None:
+        # Normalize so different Path forms of the same physical file
+        # (absolute vs relative, double-slash, case-folded on Windows)
+        # dedupe through the inflight set.
+        try:
+            canonical = path.resolve()
+        except OSError as exc:
+            log.debug("path.resolve() failed for %s, using as-is: %s", path, exc)
+            canonical = path
         with self._lock:
-            if path in self._inflight:
+            if canonical in self._inflight:
                 return
-            self._inflight.add(path)
-        self._queue.put(path)
+            self._inflight.add(canonical)
+        self._queue.put(canonical)
         self._stat("pending", 1)
-        self._log(f"queued: {path.name}")
+        self._log(f"queued: {canonical.name}")
 
     def run(self) -> None:
         while True:
@@ -497,6 +578,12 @@ class PrinterWorker(threading.Thread):
         options, applied_tokens, _resolved_submitter = resolve_path_options(
             path, self._watch_dir, ui_options,
         )
+        # Precedence (highest to lowest):
+        #   1. path/filename tokens (already merged into options above)
+        #   2. ui_options (already merged in resolve_path_options' base)
+        #   3. per-printer defaults — fill gaps only, never override explicit
+        # In other words: defaults are the floor, never the ceiling.
+        options = _apply_printer_defaults(options, self._printer_defaults_provider())
         printer_label = options.printer or DEFAULT_PRINTER_LABEL
         details = [f"to {printer_label}"]
         if options.copies > 1:
@@ -762,14 +849,11 @@ class WatcherCore:
         self._options_lock = threading.Lock()
 
         self._history = HistoryStore(history_path or default_history_path())
+        self._today_iso = datetime.now().date().isoformat()
+        self._reseed_today_from_history()
         recent = self._history.recent()
         self._stats.printed = sum(1 for r in recent if r.status == "ok")
         self._stats.errors = sum(1 for r in recent if r.status == "error")
-        today_iso = datetime.now().date().isoformat()
-        self._stats.today = sum(
-            1 for r in recent
-            if r.status == "ok" and r.timestamp.startswith(today_iso)
-        )
 
         self._log_subs: list[_LogSub] = []
         self._stat_subs: list[_StatSub] = []
@@ -784,6 +868,7 @@ class WatcherCore:
             stat_cb=self._dispatch_stat,
             options_provider=self.get_options,
             history_cb=self._dispatch_history,
+            printer_defaults_provider=self._read_printer_defaults,
         )
         self._handler = InboxHandler(
             watch_dir=watch_dir,
@@ -828,6 +913,148 @@ class WatcherCore:
 
     def pending_paths(self) -> tuple[Path, ...]:
         return self._worker.inflight_paths
+
+    def _read_printer_defaults(self) -> dict[str, dict]:
+        """Read the printer_defaults subkey from preferences.json.
+
+        Called per-job by the worker so PUT /api/printer-defaults takes
+        effect immediately without a process restart. Errors return {} so
+        a malformed prefs file never blocks the print path.
+        """
+        try:
+            raw = load_preferences().get("printer_defaults", {})
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(name): defaults if isinstance(defaults, dict) else {}
+                for name, defaults in raw.items()
+            }
+        except Exception:  # pragma: no cover - never block printing
+            log.exception("printer_defaults read failed")
+            return {}
+
+    _INBOX_HEALTH_TTL_SEC = 30.0
+
+    def inbox_health(self) -> dict[str, int | str]:
+        """Snapshot disk-usage + file counts for the watched inbox.
+
+        Walks ``watch_dir`` plus the three reserved top-levels
+        (_printed, _skipped, _scheduled) and returns total bytes + per-bucket
+        file counts. Cached behind a 30 s TTL — the dashboard tile polls
+        whenever the page is opened, and a fresh stat-walk on every poll
+        would hammer a OneDrive folder. ``os.scandir`` is used directly
+        for speed; only top-level + one nested level (per-submitter) under
+        each reserved root is walked, never the whole tree.
+        """
+        now = time.monotonic()
+        cached = getattr(self, "_inbox_health_cache", None)
+        if cached is not None and now - cached[0] < self._INBOX_HEALTH_TTL_SEC:
+            return dict(cached[1])
+
+        import contextlib
+
+        def _count_and_size(root: Path) -> tuple[int, int]:
+            count = 0
+            total = 0
+            if not root.exists():
+                return 0, 0
+            try:
+                for entry in os.scandir(root):
+                    if entry.is_file():
+                        count += 1
+                        with contextlib.suppress(OSError):
+                            total += entry.stat().st_size
+                    elif entry.is_dir():
+                        # one level deep: per-submitter folders under _printed/
+                        with contextlib.suppress(OSError):
+                            for sub in os.scandir(entry.path):
+                                if sub.is_file():
+                                    count += 1
+                                    with contextlib.suppress(OSError):
+                                        total += sub.stat().st_size
+            except OSError as exc:
+                # OneDrive can briefly revoke access mid-walk; cached zeros
+                # would mask the access failure on the dashboard otherwise.
+                log.warning("inbox_health scan failed for %s: %s", root, exc)
+            return count, total
+
+        printed_count, printed_size = _count_and_size(self._watch_dir / PRINTED_SUBDIR)
+        skipped_count, skipped_size = _count_and_size(self._watch_dir / SKIPPED_SUBDIR)
+        scheduled_count, scheduled_size = _count_and_size(self._watch_dir / SCHEDULED_SUBDIR)
+
+        # Inbox files are everything in watch_dir except reserved subdirs.
+        inbox_count = 0
+        inbox_size = 0
+        if self._watch_dir.exists():
+            try:
+                for entry in os.scandir(self._watch_dir):
+                    if entry.is_file():
+                        inbox_count += 1
+                        with contextlib.suppress(OSError):
+                            inbox_size += entry.stat().st_size
+            except OSError as exc:
+                log.warning("inbox_health scan failed for %s: %s", self._watch_dir, exc)
+
+        snapshot: dict[str, int | str] = {
+            "watch_dir": str(self._watch_dir),
+            "inbox_count": inbox_count,
+            "inbox_bytes": inbox_size,
+            "printed_count": printed_count,
+            "printed_bytes": printed_size,
+            "skipped_count": skipped_count,
+            "skipped_bytes": skipped_size,
+            "scheduled_count": scheduled_count,
+            "scheduled_bytes": scheduled_size,
+            "total_bytes": inbox_size + printed_size + skipped_size + scheduled_size,
+        }
+        self._inbox_health_cache = (now, snapshot)
+        return dict(snapshot)
+
+    def _invalidate_inbox_health(self) -> None:
+        """Test-only hook to drop the cache between cases."""
+        self._inbox_health_cache = None
+
+    def reprint(self, record: PrintRecord) -> Path:
+        """Re-queue a previously-printed file by copying it back into the inbox.
+
+        Looks for the source under ``_printed/<submitter>/<filename>`` (the
+        common case after a successful print) and falls back to
+        ``_printed/<filename>`` for older records. Copies — not moves — so
+        the history audit trail is preserved.
+
+        Raises ``FileNotFoundError`` if the source no longer exists on disk.
+        """
+        # Strip any path components from the stored filename so a malformed
+        # historic record (filename containing "../" or an absolute path)
+        # can't make either the source lookup or the target write escape
+        # the watch dir. Mirrors the basename pattern in routes/upload.py.
+        safe_name = Path(record.filename).name
+        if not safe_name or safe_name in (".", ".."):
+            raise FileNotFoundError(
+                f"reprint source has invalid filename {record.filename!r}"
+            )
+        # Submitter is a single path segment by construction (see
+        # resolve_path_options); reduce to basename defensively.
+        safe_submitter = Path(record.submitter).name if record.submitter else ""
+
+        candidates = []
+        if safe_submitter:
+            candidates.append(self._printed_dir / safe_submitter / safe_name)
+        candidates.append(self._printed_dir / safe_name)
+        source = next((p for p in candidates if p.exists()), None)
+        if source is None:
+            raise FileNotFoundError(
+                f"reprint source not found for {safe_name!r} "
+                f"(submitter={safe_submitter!r})"
+            )
+        target = self._watch_dir / safe_name
+        if target.exists():
+            target = target.with_stem(f"{target.stem}-reprint")
+        shutil.copy2(source, target)
+        # Don't pre-submit — the watchdog handler + rescan poller will pick
+        # up the new file in the inbox via the normal flow, including
+        # path-token / submitter resolution.
+        return target
 
     # ----- lifecycle ---------------------------------------------------------
 
@@ -920,11 +1147,50 @@ class WatcherCore:
 
     def _dispatch_history(self, record: PrintRecord) -> None:
         self._history.append(record)
+        self._maybe_bump_today(record)
         for cb in tuple(self._history_subs):
             try:
                 cb(record)
             except Exception:  # pragma: no cover - subscriber bug
                 log.exception("history subscriber raised")
+
+    def _maybe_bump_today(self, record: PrintRecord) -> None:
+        """Advance ``stats['today']`` when a successful print lands today.
+
+        Also handles midnight rollover: if the calendar date has changed
+        since the last seed, ``today`` is recomputed from history first so
+        yesterday's count doesn't carry over.
+
+        Synchronises on ``_stats_lock``: this method runs on the worker
+        thread, ``_reseed_today_from_history`` may run on startup, and
+        ``stats`` reads can hit any thread. Holding the lock around the
+        rollover keeps ``_today_iso``, the reseed, and the eventual
+        ``today`` increment in one consistent step.
+        """
+        if record.status != "ok":
+            return
+        current_iso = datetime.now().date().isoformat()
+        record_iso_match = False
+        with self._stats_lock:
+            if current_iso != self._today_iso:
+                self._today_iso = current_iso
+                self._stats.today = sum(
+                    1 for r in self._history.recent()
+                    if r.status == "ok" and r.timestamp.startswith(self._today_iso)
+                )
+            record_iso_match = record.timestamp.startswith(self._today_iso)
+        if record_iso_match:
+            self._dispatch_stat("today", 1)
+
+    def _reseed_today_from_history(self) -> None:
+        """Recount ``today`` from on-disk history. Used at startup only —
+        midnight rollover is handled inline in ``_maybe_bump_today`` while
+        holding ``_stats_lock``."""
+        with self._stats_lock:
+            self._stats.today = sum(
+                1 for r in self._history.recent()
+                if r.status == "ok" and r.timestamp.startswith(self._today_iso)
+            )
 
     def _dispatch_pending(self) -> None:
         items = self._worker.inflight_paths

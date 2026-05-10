@@ -53,19 +53,62 @@ public sealed class ApiClient : IDisposable
     }
 
     public async Task<IReadOnlyList<PrintRecordDto>> GetHistoryAsync(
-        string? query = null, string? regex = null, int limit = 200, CancellationToken ct = default)
+        string? query = null,
+        string? regex = null,
+        int limit = 200,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        string? statusFilter = null,
+        CancellationToken ct = default)
     {
         var url = $"/api/history?limit={limit}";
         if (!string.IsNullOrEmpty(query)) url += $"&q={Uri.EscapeDataString(query)}";
         if (!string.IsNullOrEmpty(regex)) url += $"&regex={Uri.EscapeDataString(regex)}";
+        if (from is not null)
+            url += $"&from={Uri.EscapeDataString(from.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}";
+        if (to is not null)
+            url += $"&to={Uri.EscapeDataString(to.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}";
+        if (!string.IsNullOrEmpty(statusFilter))
+            url += $"&status={Uri.EscapeDataString(statusFilter)}";
         var rows = await GetAsync<IReadOnlyList<PrintRecordDto>>(url, ct).ConfigureAwait(false);
         return rows ?? Array.Empty<PrintRecordDto>();
+    }
+
+    public Task<InboxHealthDto?> GetInboxHealthAsync(CancellationToken ct = default) =>
+        GetAsync<InboxHealthDto>("/api/inbox/health", ct);
+
+    public Task<UpdateCheckDto?> GetUpdateCheckAsync(bool force = false, CancellationToken ct = default) =>
+        GetAsync<UpdateCheckDto>($"/api/update-check?force={(force ? "true" : "false")}", ct);
+
+    public Task<Dictionary<string, PrintOptionsDto>?> ListPrinterDefaultsAsync(CancellationToken ct = default) =>
+        GetAsync<Dictionary<string, PrintOptionsDto>>("/api/printer-defaults", ct);
+
+    public Task<PrintOptionsDto?> PutPrinterDefaultAsync(
+        string printer, PrintOptionsDto defaults, CancellationToken ct = default) =>
+        PutAsync<PrintOptionsDto, PrintOptionsDto>(
+            $"/api/printer-defaults/{Uri.EscapeDataString(printer)}", defaults, ct);
+
+    public async Task DeletePrinterDefaultAsync(string printer, CancellationToken ct = default)
+    {
+        using var response = await _http.DeleteAsync(
+            $"/api/printer-defaults/{Uri.EscapeDataString(printer)}", ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task ClearHistoryAsync(CancellationToken ct = default)
     {
         using var response = await _http.DeleteAsync("/api/history", ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<PrintRecordDto?> ReprintAsync(string recordId, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsync(
+            $"/api/history/{Uri.EscapeDataString(recordId)}/reprint",
+            content: null,
+            ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PrintRecordDto>(_json, ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<PendingItemDto>> GetPendingAsync(CancellationToken ct = default)

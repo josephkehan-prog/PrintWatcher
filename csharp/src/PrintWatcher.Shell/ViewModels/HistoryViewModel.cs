@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using PrintWatcher.Shell.Models;
@@ -8,8 +9,8 @@ namespace PrintWatcher.Shell.ViewModels;
 
 /// <summary>
 /// Bound to <c>HistoryPage</c>. Loads on first navigation, refreshes on
-/// "history" WS frames, supports a substring/regex filter and a clear-all
-/// command.
+/// "history" WS frames, supports substring/regex/date/status filters and
+/// a clear-all command.
 /// </summary>
 public sealed class HistoryViewModel : ObservableObject
 {
@@ -17,6 +18,9 @@ public sealed class HistoryViewModel : ObservableObject
     private string _filter = "";
     private string _statusLabel = "";
     private bool _useRegex;
+    private DateTimeOffset? _from;
+    private DateTimeOffset? _to;
+    private string _statusKind = "Any";  // "Any" | "ok" | "error"
 
     public HistoryViewModel() { /* design-time + tests */ }
 
@@ -55,6 +59,39 @@ public sealed class HistoryViewModel : ObservableObject
         private set => SetField(ref _statusLabel, value);
     }
 
+    public DateTimeOffset? From
+    {
+        get => _from;
+        set
+        {
+            if (SetField(ref _from, value))
+                _ = RefreshAsync();
+        }
+    }
+
+    public DateTimeOffset? To
+    {
+        get => _to;
+        set
+        {
+            if (SetField(ref _to, value))
+                _ = RefreshAsync();
+        }
+    }
+
+    /// <summary>"Any" | "ok" | "error" — bound to the status ComboBox.</summary>
+    public string StatusKind
+    {
+        get => _statusKind;
+        set
+        {
+            if (SetField(ref _statusKind, value ?? "Any"))
+                _ = RefreshAsync();
+        }
+    }
+
+    public IReadOnlyList<string> StatusKinds { get; } = new[] { "Any", "ok", "error" };
+
     public AsyncRelayCommand? RefreshCommand { get; }
     public AsyncRelayCommand? ClearCommand { get; }
 
@@ -63,9 +100,15 @@ public sealed class HistoryViewModel : ObservableObject
         if (_api is null) return;
         var query = _useRegex ? null : (string.IsNullOrWhiteSpace(_filter) ? null : _filter);
         var regex = _useRegex && !string.IsNullOrWhiteSpace(_filter) ? _filter : null;
+        var status = string.Equals(_statusKind, "Any", StringComparison.OrdinalIgnoreCase) ? null : _statusKind;
         try
         {
-            var rows = await _api.GetHistoryAsync(query, regex).ConfigureAwait(true);
+            var rows = await _api.GetHistoryAsync(
+                query: query,
+                regex: regex,
+                from: _from,
+                to: _to,
+                statusFilter: status).ConfigureAwait(true);
             Rows.Clear();
             foreach (var row in rows) Rows.Add(row);
             StatusLabel = rows.Count == 0
@@ -94,9 +137,31 @@ public sealed class HistoryViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Re-queue a previously-printed file. Backend looks up the source
+    /// under <c>_printed/&lt;submitter&gt;/&lt;filename&gt;</c> and copies
+    /// it back into the inbox; the watcher picks it up via the normal flow.
+    /// </summary>
+    public async Task ReprintAsync(PrintRecordDto record)
+    {
+        if (_api is null || string.IsNullOrEmpty(record.Id)) return;
+        try
+        {
+            await _api.ReprintAsync(record.Id).ConfigureAwait(true);
+            StatusLabel = $"Reprinting {record.Filename}…";
+        }
+        catch (Exception ex)
+        {
+            StatusLabel = $"Reprint failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Append a single record received via the "history" WS frame. The
     /// backend already filters server-side, so we just prepend to keep the
     /// most recent print on top.
     /// </summary>
     public void OnHistoryFrame(PrintRecordDto record) => Rows.Insert(0, record);
+
+    /// <summary>Surface a one-shot status string from a code-behind handler.</summary>
+    public void SetTransientStatus(string message) => StatusLabel = message;
 }

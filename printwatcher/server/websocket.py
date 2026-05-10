@@ -9,6 +9,7 @@ Anything else closes the socket immediately. After auth the server sends a
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -50,9 +51,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
         pass
     except Exception:  # pragma: no cover - defensive
         log.exception("ws fan-out error")
-        try:
+        with contextlib.suppress(Exception):
             await ws.close(code=1011)
-        except Exception:
-            pass
     finally:
         state.events.unsubscribe(queue)

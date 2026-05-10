@@ -23,6 +23,18 @@ import json
 import logging
 import os
 import shutil
+import warnings
+
+# The legacy Tk UI is on a deprecation track — the canonical PrintWatcher UI
+# from v0.4 onward is the WinUI 3 shell in csharp/src/PrintWatcher.Shell/
+# (built and shipped as PrintWatcher.exe by CI). This file ships through v0.5
+# as `PrintWatcher-legacy.exe`, then is removed per docs/ARCHITECTURE.md.
+warnings.warn(
+    "print_watcher_ui (legacy Tk UI) is deprecated and scheduled for removal "
+    "in v0.5. Use the WinUI shell (PrintWatcher.exe) instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 import sys
 import threading
 import tkinter as tk

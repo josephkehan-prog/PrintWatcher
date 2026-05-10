@@ -21,6 +21,7 @@ public sealed class DashboardViewModel : ObservableObject
     private bool _paused;
     private string _statusLabel = "Connecting…";
     private PrintOptionsDto _options = new();
+    private InboxHealthDto _inboxHealth = new();
 
     public DashboardViewModel() { /* design-time + tests */ }
 
@@ -28,6 +29,7 @@ public sealed class DashboardViewModel : ObservableObject
     {
         _api = api;
         TogglePauseCommand = new AsyncRelayCommand(TogglePauseAsync);
+        RefreshInboxHealthCommand = new AsyncRelayCommand(RefreshInboxHealthAsync);
     }
 
     public int Printed { get => _printed; private set => SetField(ref _printed, value); }
@@ -64,6 +66,35 @@ public sealed class DashboardViewModel : ObservableObject
 
     public ObservableCollection<LogLine> Log { get; } = new();
     public AsyncRelayCommand? TogglePauseCommand { get; }
+    public AsyncRelayCommand? RefreshInboxHealthCommand { get; }
+
+    public InboxHealthDto InboxHealth
+    {
+        get => _inboxHealth;
+        private set => SetField(ref _inboxHealth, value);
+    }
+
+    private bool _updateAvailable;
+    private string? _updateLatest;
+    private string? _updateUrl;
+
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        private set => SetField(ref _updateAvailable, value);
+    }
+
+    public string UpdateLabel => string.IsNullOrEmpty(_updateLatest)
+        ? ""
+        : $"v{_updateLatest} available";
+
+    public Uri UpdateUrl => new(_updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases");
+
+    public string InboxBytesLabel => HumanizeBytes(InboxHealth.TotalBytes);
+
+    public string SkippedLabel => $"{InboxHealth.SkippedCount} skipped";
+
+    public bool HasSkipped => InboxHealth.SkippedCount > 0;
 
     public void ApplySnapshot(StateDto state)
     {
@@ -82,6 +113,65 @@ public sealed class DashboardViewModel : ObservableObject
         var next = !Paused;
         var echo = await _api.PostPauseAsync(next).ConfigureAwait(true);
         if (echo is not null) Paused = echo.Paused;
+    }
+
+    public async Task RefreshInboxHealthAsync()
+    {
+        if (_api is null) return;
+        try
+        {
+            var health = await _api.GetInboxHealthAsync().ConfigureAwait(true);
+            if (health is not null)
+            {
+                InboxHealth = health;
+                Raise(nameof(InboxBytesLabel));
+                Raise(nameof(SkippedLabel));
+                Raise(nameof(HasSkipped));
+            }
+        }
+        catch (Exception ex)
+        {
+            // Diagnostic only — the tile keeps its previous value rather
+            // than blanking. Without this, a backend-down state was
+            // indistinguishable from an empty inbox.
+            System.Diagnostics.Debug.WriteLine($"[dashboard] inbox-health refresh failed: {ex.Message}");
+        }
+    }
+
+    public async Task CheckForUpdateAsync()
+    {
+        if (_api is null) return;
+        try
+        {
+            var info = await _api.GetUpdateCheckAsync().ConfigureAwait(true);
+            if (info is null) return;
+            _updateLatest = info.Latest;
+            _updateUrl = info.HtmlUrl;
+            UpdateAvailable = info.HasUpdate;
+            Raise(nameof(UpdateLabel));
+            Raise(nameof(UpdateUrl));
+        }
+        catch (Exception ex)
+        {
+            // A transient network error here shouldn't surface — but the
+            // diagnostic distinguishes that from a programming bug (null
+            // _api wiring, deserialization failure, etc.).
+            System.Diagnostics.Debug.WriteLine($"[dashboard] update-check failed: {ex.Message}");
+        }
+    }
+
+    private static string HumanizeBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double value = bytes;
+        string[] units = { "KB", "MB", "GB", "TB" };
+        var unit = -1;
+        do
+        {
+            value /= 1024;
+            unit++;
+        } while (value >= 1024 && unit < units.Length - 1);
+        return $"{value:F1} {units[unit]}";
     }
 
     /// <summary>

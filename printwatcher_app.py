@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import importlib
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 
 # Keep in sync with print_watcher_ui.APP_VERSION and pyproject.toml.
 APP_VERSION = "0.3.0"
