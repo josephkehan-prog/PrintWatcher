@@ -101,3 +101,17 @@ def test_defaults_skip_when_no_match() -> None:
     options = PrintOptions(printer="OtherPrinter")
     defaults = {"ColorLaser": {"color": "color"}}
     assert _apply_printer_defaults(options, defaults) == options
+
+
+def test_defaults_known_quirk_explicit_copies_one_loses_to_default() -> None:
+    """Pin the documented copies==1 sentinel quirk: a user who explicitly
+    requested exactly 1 copy will inherit the printer's default copies.
+
+    See `_apply_printer_defaults`'s docstring for why this exists. If the
+    underlying type is upgraded to ``copies: int | None``, this assertion
+    flips and the docstring section becomes obsolete.
+    """
+    options = PrintOptions(printer="ColorLaser", copies=1)  # "explicit" 1
+    defaults = {"ColorLaser": {"copies": 3}}
+    out = _apply_printer_defaults(options, defaults)
+    assert out.copies == 3, "current sentinel treats copies==1 as unset"

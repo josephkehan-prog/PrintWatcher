@@ -58,6 +58,29 @@ def test_reprint_collision_uses_unique_stem(app, watcher, token, tmp_inbox) -> N
     assert (tmp_inbox / "report-reprint.pdf").exists()
 
 
+def test_reprint_double_collision_overwrites_known_quirk(app, watcher, token, tmp_inbox) -> None:
+    """When BOTH report.pdf and report-reprint.pdf exist, the current
+    implementation overwrites report-reprint.pdf (single-shot suffix, no
+    counter loop). This test pins that behaviour so a future change to a
+    counter loop is a deliberate decision, not silent.
+
+    If/when reprint() learns to find a unique stem, replace this assertion
+    with a check for ``report-reprint-2.pdf`` (or the new scheme).
+    """
+    rec = _seed(watcher)
+    (tmp_inbox / "report.pdf").write_bytes(b"original")
+    (tmp_inbox / "report-reprint.pdf").write_bytes(b"old reprint")
+
+    client = TestClient(app)
+    with client:
+        r = client.post(f"/api/history/{record_id(rec)}/reprint", headers=_auth(token))
+
+    assert r.status_code == 200
+    # Quirk pinned: report-reprint.pdf is overwritten with the printed-source bytes.
+    assert (tmp_inbox / "report.pdf").read_bytes() == b"original"
+    assert (tmp_inbox / "report-reprint.pdf").read_bytes() == b"%PDF-1.4 reprint-source"
+
+
 def test_reprint_missing_id_is_404(app, token) -> None:
     client = TestClient(app)
     with client:

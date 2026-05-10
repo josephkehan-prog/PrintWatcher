@@ -293,6 +293,14 @@ def _apply_printer_defaults(
     set it explicitly (None for sides/color, copies==1 for copies).
     Explicit user choices and path-token overrides are always preserved.
 
+    **Known quirk on copies==1.** ``PrintOptions.copies`` is an int with a
+    default of 1, so the function can't distinguish "user picked exactly
+    1 copy" from "user left it at the default". A user who explicitly
+    chooses 1 copy on a printer with default 3 will silently get 3
+    copies. Switching ``copies`` to ``int | None`` would fix this but
+    propagates None-handling through resolve_path_options, the UI, and
+    persistence — deferred until someone reports it.
+
     Returns the input unchanged if ``options.printer`` has no registered
     defaults or is None.
     """
@@ -964,8 +972,10 @@ class WatcherCore:
                                     count += 1
                                     with contextlib.suppress(OSError):
                                         total += sub.stat().st_size
-            except OSError:
-                pass
+            except OSError as exc:
+                # OneDrive can briefly revoke access mid-walk; cached zeros
+                # would mask the access failure on the dashboard otherwise.
+                log.warning("inbox_health scan failed for %s: %s", root, exc)
             return count, total
 
         printed_count, printed_size = _count_and_size(self._watch_dir / PRINTED_SUBDIR)
@@ -982,8 +992,8 @@ class WatcherCore:
                         inbox_count += 1
                         with contextlib.suppress(OSError):
                             inbox_size += entry.stat().st_size
-            except OSError:
-                pass
+            except OSError as exc:
+                log.warning("inbox_health scan failed for %s: %s", self._watch_dir, exc)
 
         snapshot: dict[str, int | str] = {
             "watch_dir": str(self._watch_dir),

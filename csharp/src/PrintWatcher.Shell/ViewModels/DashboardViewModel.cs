@@ -139,9 +139,12 @@ public sealed class DashboardViewModel : ObservableObject
                 Raise(nameof(HasSkipped));
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort; the dashboard tile already has a sensible default.
+            // Diagnostic only — the tile keeps its previous value rather
+            // than blanking. Without this, a backend-down state was
+            // indistinguishable from an empty inbox.
+            System.Diagnostics.Debug.WriteLine($"[dashboard] inbox-health refresh failed: {ex.Message}");
         }
     }
 
@@ -158,11 +161,12 @@ public sealed class DashboardViewModel : ObservableObject
             Raise(nameof(UpdateLabel));
             Raise(nameof(UpdateUrl));
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort; backend handles transient errors and returns
-            // has_update=false, but a network blip on this side shouldn't
-            // surface either.
+            // A transient network error here shouldn't surface — but the
+            // diagnostic distinguishes that from a programming bug (null
+            // _api wiring, deserialization failure, etc.).
+            System.Diagnostics.Debug.WriteLine($"[dashboard] update-check failed: {ex.Message}");
         }
     }
 

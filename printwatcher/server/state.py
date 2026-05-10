@@ -16,6 +16,7 @@ from printwatcher.core import load_preferences
 
 if TYPE_CHECKING:  # avoid runtime import cycles for typing only
     from printwatcher.core import WatcherCore
+    from printwatcher.server.dto import UpdateCheckDto
     from printwatcher.server.events import EventBus
 
 
@@ -26,11 +27,15 @@ class AppState:
     token: str
     app_version: str = ""
     extra: dict = field(default_factory=dict)
+    # _prefs_cache stays a raw dict because preferences.json holds a flat
+    # union of PreferencesDto fields and the freeform printer_defaults
+    # subkey — tightening to PreferencesDto would lose the latter.
+    # Validation happens at the API boundary in routes/prefs.py.
     _prefs_cache: dict | None = field(default=None, repr=False)
     _prefs_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    # GitHub release-check cache: (monotonic_ts, payload-dict). Mutable from
-    # the route handler under _update_check_lock.
-    update_check_cache: tuple[float, dict] | None = field(default=None, repr=False)
+    # GitHub release-check cache. Storing the typed DTO directly so the
+    # route never re-validates against an opaque dict on cache hits.
+    update_check_cache: tuple[float, UpdateCheckDto] | None = field(default=None, repr=False)
     _update_check_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def get_preferences(self) -> dict:

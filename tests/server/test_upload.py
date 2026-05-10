@@ -53,7 +53,8 @@ def test_upload_rejects_oversize(app, token, tmp_inbox, monkeypatch) -> None:
 
 
 def test_upload_sanitizes_filename(app, token, tmp_inbox) -> None:
-    """Path-traversal attempts are stripped down to the basename."""
+    """Path-traversal attempts are stripped down to the basename and
+    special characters are replaced with underscores."""
     client = TestClient(app)
     with client:
         r = client.post(
@@ -66,6 +67,9 @@ def test_upload_sanitizes_filename(app, token, tmp_inbox) -> None:
     landed = list(tmp_inbox.glob("*.pdf"))
     assert len(landed) == 1
     assert landed[0].parent == tmp_inbox
+    # Pin the exact basename so a regression that drops the Path(...).name
+    # call in _sanitize would surface here.
+    assert landed[0].name == "passwd.pdf"
 
 
 def test_upload_requires_token(app) -> None:

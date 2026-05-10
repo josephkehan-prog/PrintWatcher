@@ -65,9 +65,13 @@ def record_id(record: PrintRecord) -> str:
     Not a security primitive — sha1 is fine here, only used for routing
     /api/history/{id}/reprint to the right entry. Survives process restart
     because the inputs are loaded verbatim from history.json.
+
+    20 hex chars (80 bits) keeps birthday-collision probability negligible
+    for any realistic history size (~10⁻⁹ at the 200-record cap, still
+    under 10⁻⁵ at one million records).
     """
     seed = f"{record.timestamp}|{record.filename}|{record.submitter}"
-    return hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    return hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:20]
 
 
 class StatsDto(BaseModel):

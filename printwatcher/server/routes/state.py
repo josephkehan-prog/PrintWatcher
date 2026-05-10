@@ -137,15 +137,23 @@ def get_update_check(
         if not force and state.update_check_cache is not None:
             cached_at, cached = state.update_check_cache
             if now - cached_at < _UPDATE_CHECK_TTL_SEC:
-                return UpdateCheckDto(**cached)
+                return cached
 
     try:
         payload = _fetch_latest_release()
+    except (urllib.error.URLError, OSError) as exc:
+        # Transient network condition — operator can't fix it, just an INFO breadcrumb.
+        log.info("update-check network failure: %s", exc)
+        return UpdateCheckDto(current=current, has_update=False)
+
+    try:
         dto = _build_update_dto(payload, current)
-    except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
-        log.info("update-check skipped: %s", exc)
+    except (ValueError, KeyError) as exc:
+        # Schema drift or malformed response — louder so a release-channel
+        # change at GitHub's end doesn't silently disable the dashboard chip.
+        log.warning("update-check parse failure: %s", exc)
         return UpdateCheckDto(current=current, has_update=False)
 
     with state._update_check_lock:
-        state.update_check_cache = (now, dto.model_dump())
+        state.update_check_cache = (now, dto)
     return dto

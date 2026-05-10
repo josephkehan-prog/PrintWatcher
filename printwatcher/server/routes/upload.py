@@ -47,6 +47,9 @@ async def drop(file: UploadFile, state: AppState = Depends(get_state)) -> dict[s
                     break
                 received += len(chunk)
                 if received > _MAX_UPLOAD_BYTES:
+                    # Explicit close before unlink: on Windows, unlink on an
+                    # open handle raises PermissionError. The `with` block's
+                    # __exit__ wouldn't fire until after the raise.
                     fh.close()
                     target.unlink(missing_ok=True)
                     raise HTTPException(
