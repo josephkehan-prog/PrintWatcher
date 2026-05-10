@@ -8,6 +8,7 @@ the legacy Tk UI doesn't pull FastAPI's deps.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -135,7 +136,7 @@ class UpdateCheckDto(BaseModel):
     latest: str | None = None
     html_url: str | None = None
     has_update: bool = False
-    checked_at: str | None = None  # ISO timestamp of the last successful poll
+    checked_at: datetime | None = None  # last successful poll
 
 
 class InboxHealthDto(BaseModel):

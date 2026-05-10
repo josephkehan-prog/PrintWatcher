@@ -101,18 +101,6 @@ def _fetch_latest_release() -> dict:
     return json.loads(body)
 
 
-def _build_update_dto(payload: dict, current: str) -> UpdateCheckDto:
-    latest = (payload.get("tag_name") or "").lstrip("v") or None
-    html_url = payload.get("html_url")
-    return UpdateCheckDto(
-        current=current,
-        latest=latest,
-        html_url=html_url,
-        has_update=bool(latest and latest != current),
-        checked_at=datetime.now().isoformat(timespec="seconds"),
-    )
-
-
 @router.get("/update-check", response_model=UpdateCheckDto)
 def get_update_check(
     force: bool = Query(default=False),
@@ -147,7 +135,14 @@ def get_update_check(
         return UpdateCheckDto(current=current, has_update=False)
 
     try:
-        dto = _build_update_dto(payload, current)
+        latest = (payload.get("tag_name") or "").lstrip("v") or None
+        dto = UpdateCheckDto(
+            current=current,
+            latest=latest,
+            html_url=payload.get("html_url"),
+            has_update=bool(latest and latest != current),
+            checked_at=datetime.now(),
+        )
     except (ValueError, KeyError) as exc:
         # Schema drift or malformed response — louder so a release-channel
         # change at GitHub's end doesn't silently disable the dashboard chip.

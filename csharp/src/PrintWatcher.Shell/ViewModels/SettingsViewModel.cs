@@ -138,8 +138,6 @@ public sealed class SettingsViewModel : ObservableObject
 
     public RelayCommand? ShowBackendLogCommand { get; }
 
-    // Printer-defaults card bindings -----------------------------------------
-
     public ObservableCollection<string> KnownPrinters { get; } = new();
 
     public string? PrinterDefaultPrinter

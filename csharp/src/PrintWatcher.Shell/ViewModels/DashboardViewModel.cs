@@ -88,21 +88,11 @@ public sealed class DashboardViewModel : ObservableObject
         ? ""
         : $"v{_updateLatest} available";
 
-    public Uri UpdateUrl => Uri.TryCreate(
-        _updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases",
-        UriKind.Absolute,
-        out var uri)
-        ? uri
-        : new Uri("https://github.com/josephkehan-prog/PrintWatcher/releases");
+    public Uri UpdateUrl => new(_updateUrl ?? "https://github.com/josephkehan-prog/PrintWatcher/releases");
 
     public string InboxBytesLabel => HumanizeBytes(InboxHealth.TotalBytes);
 
-    public string SkippedLabel => InboxHealth.SkippedCount switch
-    {
-        0 => "0 skipped",
-        1 => "1 skipped",
-        _ => $"{InboxHealth.SkippedCount} skipped",
-    };
+    public string SkippedLabel => $"{InboxHealth.SkippedCount} skipped";
 
     public bool HasSkipped => InboxHealth.SkippedCount > 0;
 

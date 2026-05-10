@@ -356,7 +356,6 @@ _printers_cache_lock = threading.Lock()
 
 
 def _list_printers_uncached() -> list[str]:
-    """Cold-path PowerShell enumeration. Use ``list_printers()`` for callers."""
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "(Get-Printer).Name"],
@@ -539,7 +538,8 @@ class PrinterWorker(threading.Thread):
         # dedupe through the inflight set.
         try:
             canonical = path.resolve()
-        except OSError:
+        except OSError as exc:
+            log.debug("path.resolve() failed for %s, using as-is: %s", path, exc)
             canonical = path
         with self._lock:
             if canonical in self._inflight:
