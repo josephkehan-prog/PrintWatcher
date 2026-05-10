@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import socket
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -23,6 +24,33 @@ from printwatcher.server.auth import generate_token
 from printwatcher.server.events import EventBus
 
 log = logging.getLogger("printwatcher.server")
+
+
+def _ensure_console_streams() -> Path | None:
+    """When the backend runs as a PyInstaller --windowed exe, sys.stdout
+    and sys.stderr are ``None``. uvicorn's ColourizedFormatter calls
+    ``stream.isatty()`` in its ``__init__`` and crashes with
+    ``AttributeError: 'NoneType' object has no attribute 'isatty'``.
+
+    Redirect both to a rotating log file in %LOCALAPPDATA%/PrintWatcher/
+    so we keep the diagnostic stream AND give uvicorn a real file handle
+    with a working ``.isatty()`` (returns False, no colour codes).
+
+    Returns the log file path if redirection happened, else None.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return None
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    log_dir = Path(base) / "PrintWatcher" if base else Path.home() / ".printwatcher"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "backend.log"
+    # line-buffered text mode so a `tail -f` style reader sees output promptly.
+    sink = log_path.open("a", buffering=1, encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = sink
+    if sys.stderr is None:
+        sys.stderr = sink
+    return log_path
 
 
 def _server_json_path() -> Path:
@@ -99,7 +127,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    redirected_log = _ensure_console_streams()
     logging.basicConfig(level=args.log_level.upper(), format="%(asctime)s %(name)s: %(message)s")
+    if redirected_log is not None:
+        log.info("stdout/stderr were None (windowed exe); redirected to %s", redirected_log)
 
     inbox, sumatra = discover_paths()
     if args.inbox is not None:
@@ -126,6 +157,10 @@ def main(argv: list[str] | None = None) -> int:
         port=port,
         log_level=args.log_level,
         access_log=False,
+        # Skip uvicorn's default ColourizedFormatter — it calls
+        # stream.isatty() in __init__, which crashes when sys.stdout is
+        # None (PyInstaller --windowed). Our basicConfig above is enough.
+        log_config=None,
     )
     server = uvicorn.Server(config)
     try:
