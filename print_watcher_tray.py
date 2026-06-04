@@ -42,7 +42,10 @@ def print_file(path: Path):
         return
     print(f"[print] {path.name}")
     subprocess.run(
-        [str(SUMATRA), "-print-to-default", "-silent", "-exit-on-print", str(path)],
+        # "-print-settings 1x" pins a single copy so SumatraPDF can't inherit
+        # a printer driver's stored copy count (e.g. one left set to 50).
+        [str(SUMATRA), "-print-to-default", "-print-settings", "1x",
+         "-silent", "-exit-on-print", str(path)],
         check=False,
     )
     try:
