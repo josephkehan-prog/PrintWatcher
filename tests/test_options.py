@@ -148,8 +148,13 @@ def test_print_options_to_sumatra_args(watcher_module):
     assert "color" in args[settings_idx]
 
 
-def test_print_options_default_no_settings(watcher_module):
+def test_print_options_default_pins_single_copy(watcher_module):
+    # Even with no per-job options, SumatraPDF must be told "1x" explicitly so
+    # it can't inherit a printer driver's stored copy count (e.g. a shared
+    # printer left set to 50 copies). Regression test for that bug.
     options = watcher_module.PrintOptions()
     args = options.to_sumatra_args(Path("C:/s.exe"), Path("C:/f.pdf"))
     assert "-print-to-default" in args
-    assert "-print-settings" not in args
+    assert "-print-settings" in args
+    settings_idx = args.index("-print-settings") + 1
+    assert args[settings_idx] == "1x"

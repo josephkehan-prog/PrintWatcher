@@ -81,8 +81,11 @@ class PrintOptions:
             cmd += ["-print-to-default"]
 
         settings: list[str] = []
-        if self.copies > 1:
-            settings.append(f"{self.copies}x")
+        # Always pin the copy count — even "1x" — so SumatraPDF can't fall
+        # through to the printer driver's stored default (a shared school
+        # printer left set to e.g. 50 copies would otherwise win for every
+        # job left at the default copies=1, which emitted no token at all).
+        settings.append(f"{self.copies}x")
         if self.sides:
             settings.append(self.sides)
         if self.color:
