@@ -101,8 +101,9 @@ each breaks unpackaged WinUI builds. See `docs/DEV_SETUP.md` for the full ration
 - The C# shell builds/runs on **Windows 10/11 only** (`net8.0-windows10.0.19041.0`).
 - The Python backend/FastAPI surface is cross-platform, but the **printing path is
   Windows-only** because it shells out to SumatraPDF (`subprocess` in `core.py`).
-- Keep `APP_VERSION` in sync across `printwatcher/core.py`, `printwatcher_app.py`,
-  `print_watcher_ui.py`, and `pyproject.toml`.
+- `APP_VERSION` is defined independently in `printwatcher/core.py`, `printwatcher_app.py`,
+  and `pyproject.toml` (`version`) — keep all three in sync. `print_watcher_ui.py` imports
+  it from `core`, so it doesn't need a separate bump.
 
 ## Watched-folder conventions
 
