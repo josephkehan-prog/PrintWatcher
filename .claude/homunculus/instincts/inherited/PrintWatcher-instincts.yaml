@@ -1,0 +1,342 @@
+# Instincts generated from https://github.com/josephkehan-prog/PrintWatcher
+# Generated: 2026-06-04T09:50:39.651Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: PrintWatcher-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: docs, fix
+
+## Evidence
+
+- 4 commits analyzed
+- Detected conventional commit pattern
+- Examples: docs: add CLAUDE.md with architecture and command guidance, fix(core): always pin SumatraPDF copy count so driver default can't win
+
+---
+id: PrintWatcher-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Commit Length
+
+## Action
+
+Write moderate-length commit messages (~52 characters)
+
+## Evidence
+
+- Average commit message length: 52 chars
+- Based on 4 commits
+
+---
+id: PrintWatcher-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: PrintWatcher-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: PrintWatcher-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: PrintWatcher-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: PrintWatcher-workflow-update-documentation-file
+trigger: "when doing update documentation file"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/josephkehan-prog/PrintWatcher
+---
+
+# PrintWatcher Workflow Update Documentation File
+
+## Action
+
+Follow the update-documentation-file workflow:
+1. Edit an existing documentation file (e.g., CLAUDE.md).
+2. Commit the changes with a 'docs:' prefix in the message.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: CLAUDE.md
+
+---
+id: printwatcher-instinct-func-naming
+trigger: "When creating or renaming a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Func Naming
+
+## Action
+
+Use camelCase for the function name
+
+## Evidence
+
+- Pattern in codebase: functions consistently use camelCase
+
+---
+id: printwatcher-instinct-class-naming
+trigger: "When creating or renaming a class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Class Naming
+
+## Action
+
+Use PascalCase for the class name
+
+## Evidence
+
+- Pattern in codebase: classes consistently use PascalCase
+
+---
+id: printwatcher-instinct-const-naming
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Const Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for the constant name
+
+## Evidence
+
+- Pattern in codebase: constants use SCREAMING_SNAKE_CASE
+
+---
+id: printwatcher-instinct-file-naming
+trigger: "When creating or renaming a file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct File Naming
+
+## Action
+
+Use camelCase for the file name
+
+## Evidence
+
+- Pattern in codebase: files are named in camelCase
+
+---
+id: printwatcher-instinct-import-style
+trigger: "When importing modules in Python files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in codebase: imports are relative
+
+---
+id: printwatcher-instinct-export-style
+trigger: "When exporting functions or classes"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codebase: named exports used
+
+---
+id: printwatcher-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Test Location
+
+## Action
+
+Place test files in the 'tests' folder, separate from source code
+
+## Evidence
+
+- Pattern in folder structure: 'tests' folder exists and is separate
+
+---
+id: printwatcher-instinct-commit-format
+trigger: "When making a commit"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Commit Format
+
+## Action
+
+Use conventional commit format with a prefix (e.g., 'docs:', 'fix:')
+
+## Evidence
+
+- Seen in commit: 'docs: add CLAUDE.md with architecture and command guidance'
+- Seen in commit: 'fix(core): always pin SumatraPDF copy count so driver default can't win'
+
+---
+id: printwatcher-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Commit Length
+
+## Action
+
+Keep the commit message concise (average ~52 characters)
+
+## Evidence
+
+- Pattern in commits: average commit message length is 52 characters
+
+---
+id: printwatcher-instinct-update-docs
+trigger: "When someone needs to add, update, or correct documentation"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: josephkehan-prog/PrintWatcher
+---
+
+# Printwatcher Instinct Update Docs
+
+## Action
+
+Edit the relevant documentation file (e.g., CLAUDE.md) and commit with a 'docs:' prefix
+
+## Evidence
+
+- Workflow: update-documentation-file
+- Seen in commit: 'docs: correct APP_VERSION sync note in CLAUDE.md'
+
