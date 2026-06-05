@@ -4,38 +4,21 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:svc="using:PrintWatcher.Shell.Services">
-    <Page.Resources>
-        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{ThemeResource MutedBrush}" />
-            <Setter Property="CharacterSpacing" Value="80" />
-        </Style>
-        <Style x:Key="GroupCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource SurfaceBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Shadow" Value="{ThemeResource SurfaceShadow}" />
-            <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="Padding" Value="20,16" />
-        </Style>
-    </Page.Resources>
 
     <ScrollViewer>
         <StackPanel Padding="32,24,32,32" Spacing="20" MaxWidth="720" HorizontalAlignment="Left">
             <StackPanel Spacing="2">
                 <TextBlock
                     Text="Settings"
-                    FontSize="32"
-                    FontWeight="Light"
-                    Foreground="{ThemeResource TextBrush}" />
+                    Style="{StaticResource PageTitleStyle}" />
                 <TextBlock
                     Text="{x:Bind ViewModel.StatusLabel, Mode=OneWay}"
-                    Style="{StaticResource SectionLabelStyle}" />
+                    Style="{StaticResource CaptionLabelStyle}" />
             </StackPanel>
 
-            <Border Style="{StaticResource GroupCardStyle}" svc:GlassDepth.Elevated="True">
+            <Border Style="{StaticResource CardSurfaceStyle}" svc:GlassDepth.Elevated="True">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="THEME" Style="{StaticResource SectionLabelStyle}" />
+                    <TextBlock Text="THEME" Style="{StaticResource CaptionLabelStyle}" />
                     <ComboBox
                         ItemsSource="{x:Bind ViewModel.ThemeKeys}"
                         SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
@@ -43,9 +26,9 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource GroupCardStyle}" svc:GlassDepth.Elevated="True">
+            <Border Style="{StaticResource CardSurfaceStyle}" svc:GlassDepth.Elevated="True">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="ACCESSIBILITY" Style="{StaticResource SectionLabelStyle}" />
+                    <TextBlock Text="ACCESSIBILITY" Style="{StaticResource CaptionLabelStyle}" />
                     <ToggleSwitch
                         Header="Larger text"
                         OffContent="Default"
@@ -59,9 +42,9 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource GroupCardStyle}" svc:GlassDepth.Elevated="True">
+            <Border Style="{StaticResource CardSurfaceStyle}" svc:GlassDepth.Elevated="True">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="WATCHER" Style="{StaticResource SectionLabelStyle}" />
+                    <TextBlock Text="WATCHER" Style="{StaticResource CaptionLabelStyle}" />
                     <ToggleSwitch
                         Header="Hold incoming files"
                         OffContent="Print as soon as files arrive"
@@ -70,14 +53,14 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource GroupCardStyle}" svc:GlassDepth.Elevated="True">
+            <Border Style="{StaticResource CardSurfaceStyle}" svc:GlassDepth.Elevated="True">
                 <StackPanel Spacing="12">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="BACKEND LOG" Style="{StaticResource SectionLabelStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="BACKEND LOG" Style="{StaticResource CaptionLabelStyle}" VerticalAlignment="Center" />
                         <Button Grid.Column="1" Content="Show tail" Command="{x:Bind ViewModel.ShowBackendLogCommand}" />
                     </Grid>
                     <Border
@@ -91,9 +74,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="x:String">
                                         <TextBlock
-                                            FontFamily="Consolas, Cascadia Code, monospace"
-                                            FontSize="12"
-                                            Foreground="{ThemeResource LogTextBrush}"
+                                            Style="{StaticResource MonospaceTextStyle}"
                                             Text="{x:Bind}" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

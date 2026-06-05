@@ -5,13 +5,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:PrintWatcher.Shell.Models"
     xmlns:svc="using:PrintWatcher.Shell.Services">
-    <Page.Resources>
-        <Style x:Key="SectionLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{ThemeResource MutedBrush}" />
-            <Setter Property="CharacterSpacing" Value="80" />
-        </Style>
-    </Page.Resources>
 
     <Grid Padding="32,24,32,32" RowSpacing="16">
         <Grid.RowDefinitions>
@@ -23,12 +16,10 @@
         <StackPanel Grid.Row="0" Spacing="2">
             <TextBlock
                 Text="History"
-                FontSize="32"
-                FontWeight="Light"
-                Foreground="{ThemeResource TextBrush}" />
+                Style="{StaticResource PageTitleStyle}" />
             <TextBlock
                 Text="{x:Bind ViewModel.StatusLabel, Mode=OneWay}"
-                Style="{StaticResource SectionLabelStyle}" />
+                Style="{StaticResource CaptionLabelStyle}" />
         </StackPanel>
 
         <Grid Grid.Row="1" ColumnSpacing="12">
@@ -59,12 +50,9 @@
 
         <Border
             Grid.Row="2"
+            Style="{StaticResource CardSurfaceStyle}"
             Background="{ThemeResource LogBgBrush}"
-            BorderBrush="{ThemeResource SurfaceBorderBrush}"
-            BorderThickness="1"
-            Shadow="{ThemeResource SurfaceShadow}"
             svc:GlassDepth.Elevated="True"
-            CornerRadius="16"
             Padding="0">
             <ListView
                 ItemsSource="{x:Bind ViewModel.Rows}"
@@ -79,11 +67,11 @@
                                 <ColumnDefinition Width="120" />
                                 <ColumnDefinition Width="180" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="TIME"      Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Grid.Column="1" Text="FILE"      Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Grid.Column="2" Text="STATUS"    Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Grid.Column="3" Text="SUBMITTER" Style="{StaticResource SectionLabelStyle}" />
-                            <TextBlock Grid.Column="4" Text="PRINTER"   Style="{StaticResource SectionLabelStyle}" />
+                            <TextBlock Grid.Column="0" Text="TIME"      Style="{StaticResource CaptionLabelStyle}" />
+                            <TextBlock Grid.Column="1" Text="FILE"      Style="{StaticResource CaptionLabelStyle}" />
+                            <TextBlock Grid.Column="2" Text="STATUS"    Style="{StaticResource CaptionLabelStyle}" />
+                            <TextBlock Grid.Column="3" Text="SUBMITTER" Style="{StaticResource CaptionLabelStyle}" />
+                            <TextBlock Grid.Column="4" Text="PRINTER"   Style="{StaticResource CaptionLabelStyle}" />
                         </Grid>
                     </DataTemplate>
                 </ListView.HeaderTemplate>

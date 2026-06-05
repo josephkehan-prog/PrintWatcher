@@ -7,13 +7,8 @@
     xmlns:controls="using:PrintWatcher.Shell.Controls"
     xmlns:svc="using:PrintWatcher.Shell.Services">
     <Page.Resources>
-        <Style x:Key="StatTileStyle" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource SurfaceBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Shadow" Value="{ThemeResource SurfaceShadow}" />
+        <Style x:Key="StatTileStyle" TargetType="Border" BasedOn="{StaticResource CardSurfaceStyle}">
             <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="20,16" />
             <Setter Property="MinWidth" Value="160" />
             <Setter Property="MinHeight" Value="92" />
         </Style>
@@ -21,11 +16,6 @@
             <Setter Property="FontSize" Value="36" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{ThemeResource TextBrush}" />
-        </Style>
-        <Style x:Key="StatLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{ThemeResource MutedBrush}" />
-            <Setter Property="CharacterSpacing" Value="80" />
         </Style>
     </Page.Resources>
 
@@ -39,9 +29,7 @@
                 <StackPanel Grid.Column="0" Spacing="2">
                     <TextBlock
                         Text="PrintWatcher"
-                        FontSize="32"
-                        FontWeight="Light"
-                        Foreground="{ThemeResource TextBrush}" />
+                        Style="{StaticResource PageTitleStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <controls:StatusPip
                             VerticalAlignment="Center"
@@ -74,7 +62,7 @@
                             <StackPanel>
                                 <TextBlock
                                     Text="{x:Bind Label}"
-                                    Style="{StaticResource StatLabelStyle}" />
+                                    Style="{StaticResource CaptionLabelStyle}" />
                                 <TextBlock
                                     Text="{x:Bind Value, Mode=OneWay}"
                                     Style="{StaticResource StatNumberStyle}" />
@@ -87,12 +75,9 @@
             <controls:OptionsPanel />
 
             <Border
+                Style="{StaticResource CardSurfaceStyle}"
                 Background="{ThemeResource LogBgBrush}"
-                BorderBrush="{ThemeResource SurfaceBorderBrush}"
-                BorderThickness="1"
-                Shadow="{ThemeResource SurfaceShadow}"
                 svc:GlassDepth.Elevated="True"
-                CornerRadius="16"
                 Padding="16"
                 MinHeight="280">
                 <StackPanel Spacing="8">
@@ -104,11 +89,11 @@
                         <TextBlock
                             Grid.Column="0"
                             Text="ACTIVITY"
-                            Style="{StaticResource StatLabelStyle}" />
+                            Style="{StaticResource CaptionLabelStyle}" />
                         <TextBlock
                             Grid.Column="1"
                             Text="Drop files anywhere on this page to print"
-                            Style="{StaticResource StatLabelStyle}" />
+                            Style="{StaticResource CaptionLabelStyle}" />
                     </Grid>
                     <ListView
                         ItemsSource="{x:Bind ViewModel.Log}"
@@ -123,9 +108,7 @@
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:LogLine">
                                 <TextBlock
-                                    FontFamily="Consolas, Cascadia Code, monospace"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource LogTextBrush}"
+                                    Style="{StaticResource MonospaceTextStyle}"
                                     Text="{x:Bind Line}" />
                             </DataTemplate>
                         </ListView.ItemTemplate>
