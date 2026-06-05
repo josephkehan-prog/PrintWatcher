@@ -14,10 +14,6 @@ namespace PrintWatcher.Shell.Services;
 /// </summary>
 public sealed class ThemeService
 {
-    /// <summary>Surface alpha applied to panel / log-bg brushes when the palette is translucent.</summary>
-    private const double TranslucentPanelAlpha = 0.55;
-    private const double TranslucentLogBgAlpha = 0.40;
-
     public string Current { get; private set; } = ThemeRegistry.Default;
 
     public event Action<ThemePalette>? ThemeChanged;
@@ -28,10 +24,8 @@ public sealed class ThemeService
         var resources = Application.Current.Resources;
 
         resources["BgBrush"] = MakeBrush(palette.Bg);
-        resources["PanelBrush"] = MakeBrush(palette.Panel,
-            palette.Translucent ? TranslucentPanelAlpha : 1.0);
-        resources["LogBgBrush"] = MakeBrush(palette.LogBg,
-            palette.Translucent ? TranslucentLogBgAlpha : 1.0);
+        resources["PanelBrush"] = MakeBrush(palette.Panel, GlassMaterial.PanelAlpha(palette));
+        resources["LogBgBrush"] = MakeBrush(palette.LogBg, GlassMaterial.LogBgAlpha(palette));
         resources["TextBrush"] = MakeBrush(palette.Text);
         resources["MutedBrush"] = MakeBrush(palette.Muted);
         resources["OkBrush"] = MakeBrush(palette.Ok);
@@ -39,6 +33,16 @@ public sealed class ThemeService
         resources["LogTextBrush"] = MakeBrush(palette.LogText);
         resources["BtnHoverBrush"] = MakeBrush(palette.BtnHover);
 
+        // Glass depth (shell-only; no Python mirror). Surfaces always carry a 1px
+        // border; here we only swap its brush. On solid themes it resolves to a
+        // fully transparent stroke (invisible), and on Glass to a bright hairline
+        // that defines the frosted pane against the acrylic backdrop. GlassDepth
+        // toggles the matching elevation shadow.
+        resources["SurfaceBorderBrush"] = MakeBrush(GlassMaterial.GlassBorderHex, GlassMaterial.BorderAlpha(palette));
+
+        // Order matters: publish Current before firing ThemeChanged so any
+        // handler that reads back the active theme (e.g. GlassDepth resolving the
+        // palette for a freshly hooked surface) sees the new value, not the old.
         Current = name;
         ThemeChanged?.Invoke(palette);
     }

@@ -4,11 +4,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:PrintWatcher.Shell.ViewModels"
-    xmlns:controls="using:PrintWatcher.Shell.Controls">
+    xmlns:controls="using:PrintWatcher.Shell.Controls"
+    xmlns:svc="using:PrintWatcher.Shell.Services">
     <Page.Resources>
         <Style x:Key="StatTileStyle" TargetType="Border">
             <Setter Property="Background" Value="{ThemeResource PanelBrush}" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="BorderBrush" Value="{ThemeResource SurfaceBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Shadow" Value="{ThemeResource SurfaceShadow}" />
+            <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="20,16" />
             <Setter Property="MinWidth" Value="160" />
             <Setter Property="MinHeight" Value="92" />
@@ -66,7 +70,7 @@
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:StatTileItem">
-                        <Border Style="{StaticResource StatTileStyle}">
+                        <Border Style="{StaticResource StatTileStyle}" svc:GlassDepth.Elevated="True">
                             <StackPanel>
                                 <TextBlock
                                     Text="{x:Bind Label}"
@@ -84,7 +88,11 @@
 
             <Border
                 Background="{ThemeResource LogBgBrush}"
-                CornerRadius="14"
+                BorderBrush="{ThemeResource SurfaceBorderBrush}"
+                BorderThickness="1"
+                Shadow="{ThemeResource SurfaceShadow}"
+                svc:GlassDepth.Elevated="True"
+                CornerRadius="16"
                 Padding="16"
                 MinHeight="280">
                 <StackPanel Spacing="8">

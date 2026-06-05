@@ -21,6 +21,16 @@
             <SolidColorBrush x:Key="ErrBrush" Color="#FF6B8A9C" />
             <SolidColorBrush x:Key="LogTextBrush" Color="#FFE0F2FF" />
             <SolidColorBrush x:Key="BtnHoverBrush" Color="#FF0A96E0" />
+
+            <!-- Glass depth resources. Surfaces carry a 1px border whose brush is
+                 swapped per palette by ThemeService: fully transparent on the
+                 solid themes (so they stay visually borderless), a bright hairline
+                 on Glass. The default below is the opaque/no-op case so the
+                 designer and the pre-Apply() flash stay borderless. SurfaceShadow
+                 is shared; GlassDepth toggles each surface's Z so it only casts
+                 under the translucent palette. -->
+            <SolidColorBrush x:Key="SurfaceBorderBrush" Color="Transparent" />
+            <ThemeShadow x:Key="SurfaceShadow" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
