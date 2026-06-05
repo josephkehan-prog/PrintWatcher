@@ -72,10 +72,10 @@ public static class GlassDepth
         var theme = App.Current?.Theme;
         if (theme is null) return;
 
-        ApplyZ(element, ThemeRegistry.Resolve(theme.Current));
+        ApplyZ(element, ThemeRegistry.Resolve(theme.Current), theme.ReduceTransparency);
 
         if (Subscriptions.TryGetValue(element, out _)) return; // already subscribed
-        Action<ThemePalette> handler = palette => ApplyZ(element, palette);
+        Action<ThemePalette> handler = palette => ApplyZ(element, palette, theme.ReduceTransparency);
         Subscriptions.Add(element, new Subscription { Theme = theme, Handler = handler });
         theme.ThemeChanged += handler;
     }
@@ -87,6 +87,6 @@ public static class GlassDepth
         Subscriptions.Remove(element);
     }
 
-    private static void ApplyZ(UIElement element, ThemePalette palette) =>
-        element.Translation = new Vector3(0f, 0f, (float)GlassMaterial.ElevationZ(palette));
+    private static void ApplyZ(UIElement element, ThemePalette palette, bool reduceTransparency) =>
+        element.Translation = new Vector3(0f, 0f, (float)GlassMaterial.ElevationZ(palette, reduceTransparency));
 }

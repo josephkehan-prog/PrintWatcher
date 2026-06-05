@@ -31,6 +31,17 @@ public sealed partial class MainWindow : Window
 
     private void ApplyBackdrop(ThemePalette palette)
     {
+        // "Reduce transparency" wins over the palette: no system backdrop at all,
+        // so the window renders solid (the NavigationView paints opaque BgBrush).
+        if (App.Current.Theme.ReduceTransparency)
+        {
+            SystemBackdrop = null;
+            return;
+        }
+
+        // Otherwise the backdrop follows the palette: translucent themes (Glass)
+        // get DesktopAcrylicBackdrop so content blurs through panel surfaces;
+        // everything else stays on Mica.
         SystemBackdrop = palette.Translucent
             ? new DesktopAcrylicBackdrop()
             : new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt };

@@ -41,28 +41,38 @@ public static class GlassMaterial
     /// <summary>Shadow lift (Translation Z) applied to elevated glass surfaces; 0 = no cast.</summary>
     public const double GlassElevationZ = 28;
 
+    /// <summary>
+    /// Whether surfaces should render with the translucent glass treatment.
+    /// True only for a translucent palette that the user has NOT overridden via
+    /// the "Reduce transparency" accessibility setting — that toggle forces every
+    /// surface back to the opaque/flat path regardless of the active palette.
+    /// </summary>
+    public static bool IsTranslucent(ThemePalette palette, bool reduceTransparency = false) =>
+        palette.Translucent && !reduceTransparency;
+
     /// <summary>Fill alpha for the primary (panel) surface of <paramref name="palette"/>.</summary>
-    public static double PanelAlpha(ThemePalette palette) =>
-        palette.Translucent ? GlassPanelAlpha : OpaqueAlpha;
+    public static double PanelAlpha(ThemePalette palette, bool reduceTransparency = false) =>
+        IsTranslucent(palette, reduceTransparency) ? GlassPanelAlpha : OpaqueAlpha;
 
     /// <summary>Fill alpha for the recessed (log/list) surface of <paramref name="palette"/>.</summary>
-    public static double LogBgAlpha(ThemePalette palette) =>
-        palette.Translucent ? GlassLogBgAlpha : OpaqueAlpha;
+    public static double LogBgAlpha(ThemePalette palette, bool reduceTransparency = false) =>
+        IsTranslucent(palette, reduceTransparency) ? GlassLogBgAlpha : OpaqueAlpha;
 
     /// <summary>
     /// Border alpha for <paramref name="palette"/>: a visible hairline on glass,
     /// fully transparent on solid themes (so they keep their borderless look).
     /// </summary>
-    public static double BorderAlpha(ThemePalette palette) =>
-        palette.Translucent ? GlassBorderAlpha : 0.0;
+    public static double BorderAlpha(ThemePalette palette, bool reduceTransparency = false) =>
+        IsTranslucent(palette, reduceTransparency) ? GlassBorderAlpha : 0.0;
 
     /// <summary>
     /// Elevation (Translation Z) for <paramref name="palette"/>: lifted on glass,
     /// flat on solid themes so no shadow is cast.
     /// </summary>
-    public static double ElevationZ(ThemePalette palette) =>
-        palette.Translucent ? GlassElevationZ : 0.0;
+    public static double ElevationZ(ThemePalette palette, bool reduceTransparency = false) =>
+        IsTranslucent(palette, reduceTransparency) ? GlassElevationZ : 0.0;
 
     /// <summary>Whether surfaces should cast an elevation shadow under <paramref name="palette"/>.</summary>
-    public static bool CastsShadow(ThemePalette palette) => palette.Translucent;
+    public static bool CastsShadow(ThemePalette palette, bool reduceTransparency = false) =>
+        IsTranslucent(palette, reduceTransparency);
 }

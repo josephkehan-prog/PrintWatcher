@@ -53,6 +53,51 @@ public sealed class GlassMaterialTests
     }
 
     [Fact]
+    public void ReduceTransparency_ForcesGlass_ToOpaqueAndFlat()
+    {
+        // "Reduce transparency" overrides the palette: even Glass must render with
+        // full surface alpha, no hairline border, and no elevation lift.
+        var glass = ThemeRegistry.Resolve("Glass");
+
+        GlassMaterial.IsTranslucent(glass, reduceTransparency: true).Should().BeFalse();
+        GlassMaterial.PanelAlpha(glass, reduceTransparency: true).Should().Be(1.0);
+        GlassMaterial.LogBgAlpha(glass, reduceTransparency: true).Should().Be(1.0);
+        GlassMaterial.BorderAlpha(glass, reduceTransparency: true).Should().Be(0.0);
+        GlassMaterial.ElevationZ(glass, reduceTransparency: true).Should().Be(0.0);
+        GlassMaterial.CastsShadow(glass, reduceTransparency: true).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ReduceTransparencyOff_LeavesGlassTranslucent()
+    {
+        // The default (off) path is unchanged from the palette-only behaviour.
+        var glass = ThemeRegistry.Resolve("Glass");
+
+        GlassMaterial.IsTranslucent(glass, reduceTransparency: false).Should().BeTrue();
+        GlassMaterial.PanelAlpha(glass, reduceTransparency: false).Should().Be(GlassMaterial.GlassPanelAlpha);
+        GlassMaterial.BorderAlpha(glass, reduceTransparency: false).Should().BeGreaterThan(0.0);
+        GlassMaterial.ElevationZ(glass, reduceTransparency: false).Should().BeGreaterThan(0.0);
+    }
+
+    [Theory]
+    [InlineData("Ocean")]
+    [InlineData("Forest")]
+    [InlineData("Indigo")]
+    [InlineData("Blush")]
+    public void ReduceTransparency_IsANoOp_OnAlreadyOpaqueThemes(string name)
+    {
+        // Solid themes are opaque regardless of the flag — the toggle can't make
+        // them "more solid", so behaviour matches the flag-off opaque case exactly.
+        var palette = ThemeRegistry.Resolve(name);
+
+        GlassMaterial.IsTranslucent(palette, reduceTransparency: true).Should().BeFalse();
+        GlassMaterial.PanelAlpha(palette, reduceTransparency: true).Should().Be(1.0);
+        GlassMaterial.LogBgAlpha(palette, reduceTransparency: true).Should().Be(1.0);
+        GlassMaterial.BorderAlpha(palette, reduceTransparency: true).Should().Be(0.0);
+        GlassMaterial.ElevationZ(palette, reduceTransparency: true).Should().Be(0.0);
+    }
+
+    [Fact]
     public void AllAlphas_StayWithinUnitRange()
     {
         foreach (var name in OpaqueThemes)

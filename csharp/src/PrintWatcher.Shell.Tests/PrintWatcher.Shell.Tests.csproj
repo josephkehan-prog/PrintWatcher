@@ -39,6 +39,7 @@
     <Compile Include="..\PrintWatcher.Shell\Services\BackendSupervisor.cs" Link="Services\BackendSupervisor.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\ThemePalette.cs" Link="Services\ThemePalette.cs" />
     <Compile Include="..\PrintWatcher.Shell\Services\GlassMaterial.cs" Link="Services\GlassMaterial.cs" />
+    <Compile Include="..\PrintWatcher.Shell\Services\TextScale.cs" Link="Services\TextScale.cs" />
   </ItemGroup>
 
 </Project>

@@ -52,7 +52,8 @@ public partial class App : Application
             history: new HistoryViewModel(Api),
             pending: new PendingViewModel(Api),
             tools: new ToolsViewModel(Api),
-            settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail),
+            settings: new SettingsViewModel(Api, Theme.Apply, () => backend.LogTail,
+                Theme.SetLargerText, Theme.SetReduceTransparency),
             options: new OptionsViewModel((dto, ct) => Api.PutOptionsAsync(dto, ct)));
         Events.FrameReceived += OnFrame;
         Events.StateChanged += OnConnState;
@@ -64,7 +65,12 @@ public partial class App : Application
             if (snapshot is not null)
             {
                 Shell.Theme = snapshot.Preferences.Theme;
-                Theme.Apply(snapshot.Preferences.Theme);
+                // Apply theme + both accessibility flags in one render so the
+                // persisted preferences are fully reflected before the window shows.
+                Theme.Apply(
+                    snapshot.Preferences.Theme,
+                    snapshot.Preferences.LargerText,
+                    snapshot.Preferences.ReduceTransparency);
                 Shell.Dashboard.ApplySnapshot(snapshot);
                 Shell.Settings.ApplySnapshot(snapshot.Preferences);
                 Shell.Pending.OnPendingFrame(snapshot.Pending);

@@ -16,6 +16,8 @@ public sealed class SettingsViewModel : ObservableObject
 {
     private readonly ApiClient? _api;
     private readonly Action<string>? _applyTheme;
+    private readonly Action<bool>? _applyLargerText;
+    private readonly Action<bool>? _applyReduceTransparency;
     private readonly Func<IReadOnlyList<string>>? _readLogTail;
     private string _selectedTheme = ThemeRegistry.Default;
     private bool _largerText;
@@ -26,11 +28,18 @@ public sealed class SettingsViewModel : ObservableObject
 
     public SettingsViewModel() { /* design-time + tests */ }
 
-    public SettingsViewModel(ApiClient api, Action<string> applyTheme, Func<IReadOnlyList<string>> readLogTail)
+    public SettingsViewModel(
+        ApiClient api,
+        Action<string> applyTheme,
+        Func<IReadOnlyList<string>> readLogTail,
+        Action<bool>? applyLargerText = null,
+        Action<bool>? applyReduceTransparency = null)
     {
         _api = api;
         _applyTheme = applyTheme;
         _readLogTail = readLogTail;
+        _applyLargerText = applyLargerText;
+        _applyReduceTransparency = applyReduceTransparency;
         ShowBackendLogCommand = new RelayCommand(LoadLogTail);
     }
 
@@ -50,13 +59,23 @@ public sealed class SettingsViewModel : ObservableObject
     public bool LargerText
     {
         get => _largerText;
-        set { if (SetField(ref _largerText, value)) _ = SaveAsync(); }
+        set
+        {
+            if (!SetField(ref _largerText, value)) return;
+            _applyLargerText?.Invoke(value);
+            _ = SaveAsync();
+        }
     }
 
     public bool ReduceTransparency
     {
         get => _reduceTransparency;
-        set { if (SetField(ref _reduceTransparency, value)) _ = SaveAsync(); }
+        set
+        {
+            if (!SetField(ref _reduceTransparency, value)) return;
+            _applyReduceTransparency?.Invoke(value);
+            _ = SaveAsync();
+        }
     }
 
     public bool HoldMode
@@ -79,6 +98,14 @@ public sealed class SettingsViewModel : ObservableObject
     /// Seed from the boot snapshot. Suppresses the auto-save side effect so
     /// hydrating the picker doesn't immediately PUT back to the backend.
     /// </summary>
+    /// <remarks>
+    /// The visual apply callbacks (<c>_applyTheme</c>, <c>_applyLargerText</c>,
+    /// <c>_applyReduceTransparency</c>) are intentionally NOT suppressed — they
+    /// keep brushes/typography in sync on hydration. <c>App</c> already does the
+    /// authoritative <c>ThemeService.Apply(theme, largerText, reduceTransparency)</c>
+    /// before this runs, so these fire into <c>ThemeService</c>'s no-op guards and
+    /// re-render nothing; <c>Render()</c> is idempotent regardless.
+    /// </remarks>
     public void ApplySnapshot(PreferencesDto prefs)
     {
         _suppressSave = true;

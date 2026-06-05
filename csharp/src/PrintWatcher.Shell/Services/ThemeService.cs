@@ -16,16 +16,60 @@ public sealed class ThemeService
 {
     public string Current { get; private set; } = ThemeRegistry.Default;
 
+    /// <summary>"Larger text" accessibility setting — scales the shared type tokens.</summary>
+    public bool LargerText { get; private set; }
+
+    /// <summary>
+    /// "Reduce transparency" accessibility setting — forces opaque/flat surfaces
+    /// and a solid window backdrop even under a translucent palette.
+    /// </summary>
+    public bool ReduceTransparency { get; private set; }
+
     public event Action<ThemePalette>? ThemeChanged;
 
+    /// <summary>Switch the active theme, keeping the current accessibility flags.</summary>
     public void Apply(string name)
     {
-        var palette = ThemeRegistry.Resolve(name);
+        Current = name;
+        Render();
+    }
+
+    /// <summary>
+    /// Apply theme and both accessibility flags in one render — used at startup so
+    /// the persisted preferences land in a single pass before the window appears.
+    /// </summary>
+    public void Apply(string name, bool largerText, bool reduceTransparency)
+    {
+        Current = name;
+        LargerText = largerText;
+        ReduceTransparency = reduceTransparency;
+        Render();
+    }
+
+    /// <summary>Toggle "Larger text" and re-render (no-op if unchanged).</summary>
+    public void SetLargerText(bool on)
+    {
+        if (LargerText == on) return;
+        LargerText = on;
+        Render();
+    }
+
+    /// <summary>Toggle "Reduce transparency" and re-render (no-op if unchanged).</summary>
+    public void SetReduceTransparency(bool on)
+    {
+        if (ReduceTransparency == on) return;
+        ReduceTransparency = on;
+        Render();
+    }
+
+    private void Render()
+    {
+        var palette = ThemeRegistry.Resolve(Current);
         var resources = Application.Current.Resources;
 
         resources["BgBrush"] = MakeBrush(palette.Bg);
-        resources["PanelBrush"] = MakeBrush(palette.Panel, GlassMaterial.PanelAlpha(palette));
-        resources["LogBgBrush"] = MakeBrush(palette.LogBg, GlassMaterial.LogBgAlpha(palette));
+        resources["PanelBrush"] = MakeBrush(palette.Panel, GlassMaterial.PanelAlpha(palette, ReduceTransparency));
+        resources["LogBgBrush"] = MakeBrush(palette.LogBg, GlassMaterial.LogBgAlpha(palette, ReduceTransparency));
         resources["TextBrush"] = MakeBrush(palette.Text);
         resources["MutedBrush"] = MakeBrush(palette.Muted);
         resources["OkBrush"] = MakeBrush(palette.Ok);
@@ -34,16 +78,22 @@ public sealed class ThemeService
         resources["BtnHoverBrush"] = MakeBrush(palette.BtnHover);
 
         // Glass depth (shell-only; no Python mirror). Surfaces always carry a 1px
-        // border; here we only swap its brush. On solid themes it resolves to a
-        // fully transparent stroke (invisible), and on Glass to a bright hairline
-        // that defines the frosted pane against the acrylic backdrop. GlassDepth
-        // toggles the matching elevation shadow.
-        resources["SurfaceBorderBrush"] = MakeBrush(GlassMaterial.GlassBorderHex, GlassMaterial.BorderAlpha(palette));
+        // border; here we only swap its brush. On solid themes — and whenever
+        // "Reduce transparency" is on — it resolves to a fully transparent stroke
+        // (invisible); on Glass to a bright hairline that defines the frosted pane
+        // against the acrylic backdrop. GlassDepth toggles the matching shadow.
+        resources["SurfaceBorderBrush"] =
+            MakeBrush(GlassMaterial.GlassBorderHex, GlassMaterial.BorderAlpha(palette, ReduceTransparency));
 
-        // Order matters: publish Current before firing ThemeChanged so any
-        // handler that reads back the active theme (e.g. GlassDepth resolving the
-        // palette for a freshly hooked surface) sees the new value, not the old.
-        Current = name;
+        // Type scale: the three shared FontSize* tokens (referenced by the App.xaml
+        // styles via ThemeResource) are written here scaled by the "Larger text"
+        // setting, so one Render keeps colour and typography in sync.
+        resources["FontSizePageTitle"] = TextScale.PageTitle(LargerText);
+        resources["FontSizeCaption"] = TextScale.Caption(LargerText);
+        resources["FontSizeMonospace"] = TextScale.Monospace(LargerText);
+
+        // ThemeChanged fires last so handlers that read back the flags / Current
+        // (MainWindow backdrop, GlassDepth elevation) see the new state.
         ThemeChanged?.Invoke(palette);
     }
 
