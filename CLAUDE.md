@@ -9,9 +9,12 @@ share a PDF from an iPad → it lands in `PrintInbox/` → a Windows watcher pri
 portable SumatraPDF → the file moves to `_printed/`. Aimed at schools/teachers; ships as
 standalone Windows `.exe`s (no Python required on the target machine).
 
-It is mid-migration (v0.4). The UI is being ported from a legacy Tk/customtkinter desktop
-app to a native **C# / WinUI 3 shell** that talks to a **headless Python backend** over
-REST + WebSocket on `127.0.0.1`. Both UIs ship side-by-side through v0.5; v0.6 deletes Tk.
+It is mid-migration toward v0.4 (the shipped `APP_VERSION`/`pyproject` version string is still
+`0.3.0` — "v0.4" is the migration milestone, not a string to bump prematurely). The UI is being
+ported from a legacy Tk/customtkinter desktop app to a native **C# / WinUI 3 shell** that talks to
+a **headless Python backend** over REST + WebSocket on `127.0.0.1`. Both UIs ship side-by-side
+through v0.5; v0.6 deletes Tk. The legacy UI is the ~2000-line monolith `print_watcher_ui.py` —
+slated for deletion, so don't invest new feature work there.
 
 ## Two-process architecture (read `docs/ARCHITECTURE.md` first)
 
@@ -27,6 +30,14 @@ The dividing line is deliberate: **`printwatcher/core.py` (`WatcherCore`, `Print
 imported directly by three consumers — the legacy Tk UI, the 25+ `scripts/` helpers, and
 the FastAPI server. Changes to printing/watching/history behavior belong in `core.py`, not
 in any UI layer, so the two front-ends can't drift.
+
+**Backend internals:** `printwatcher/server/app.py` is the `create_app` factory; endpoints are
+split into per-resource modules under `server/routes/` (`state`, `history`, `pending`, `options`,
+`printers`, `prefs`, `themes`, `tools`, `upload`, `shutdown`). `server/state.py` holds server-side
+shared state, `server/websocket.py` the live event socket, `server/tools.py` wraps the `scripts/`
+helpers as callable tools, and `server/__main__.py` (`python -m printwatcher.server`) boots
+`WatcherCore` + uvicorn and writes `server.json`. The FastAPI surface is tested under `tests/server/`;
+`core.py` behavior under top-level `tests/`.
 
 Key cross-cutting facts a single file won't tell you:
 
