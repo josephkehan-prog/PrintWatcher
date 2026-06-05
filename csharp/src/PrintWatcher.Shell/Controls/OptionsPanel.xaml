@@ -3,7 +3,8 @@
     x:Class="PrintWatcher.Shell.Controls.OptionsPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:PrintWatcher.Shell.ViewModels">
+    xmlns:vm="using:PrintWatcher.Shell.ViewModels"
+    xmlns:svc="using:PrintWatcher.Shell.Services">
     <UserControl.Resources>
         <Style x:Key="OptionLabelStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11" />
@@ -15,7 +16,11 @@
 
     <Border
         Background="{ThemeResource PanelBrush}"
-        CornerRadius="14"
+        BorderBrush="{ThemeResource SurfaceBorderBrush}"
+        BorderThickness="1"
+        Shadow="{ThemeResource SurfaceShadow}"
+        svc:GlassDepth.Elevated="True"
+        CornerRadius="16"
         Padding="20,16">
         <StackPanel Spacing="12">
             <TextBlock
